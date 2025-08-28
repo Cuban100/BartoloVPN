@@ -1,0 +1,92 @@
+<!-- Monitoring Component -->
+<div id="monitoring-tab" class="tab-content" style="display: none;">
+    <div class="page-header">
+        <h2>System Monitoring</h2>
+        <p>Real-time monitoring of system resources and VPN performance</p>
+    </div>
+    
+    <div class="content-section">
+        <div class="section-header">
+            <h3>System Resources</h3>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-microchip"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>CPU Usage</h3>
+                    <div class="stat-value" id="cpu-usage">0%</div>
+                    <div class="stat-label">Current Load</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-memory"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Memory Usage</h3>
+                    <div class="stat-value" id="memory-usage">0%</div>
+                    <div class="stat-label">RAM Utilization</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-hdd"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Disk Usage</h3>
+                    <div class="stat-value" id="disk-usage">0%</div>
+                    <div class="stat-label">Storage</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-network-wired"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Network</h3>
+                    <div class="stat-value" id="network-usage">0 MB/s</div>
+                    <div class="stat-label">Bandwidth</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section-header">
+            <h3>VPN Performance</h3>
+        </div>
+        
+        <div class="performance-grid">
+            <div class="performance-card">
+                <h4>WireGuard</h4>
+                <div class="performance-stats">
+                    <div class="stat">Connections: <span id="wg-connections">0</span></div>
+                    <div class="stat">Bandwidth: <span id="wg-bandwidth">0 MB/s</span></div>
+                    <div class="stat">Latency: <span id="wg-latency">0ms</span></div>
+                </div>
+            </div>
+            
+            <div class="performance-card">
+                <h4>OpenVPN</h4>
+                <div class="performance-stats">
+                    <div class="stat">Connections: <span id="ovpn-connections">0</span></div>
+                    <div class="stat">Bandwidth: <span id="ovpn-bandwidth">0 MB/s</span></div>
+                    <div class="stat">Latency: <span id="ovpn-latency">0ms</span></div>
+                </div>
+            </div>
+            
+            <div class="performance-card">
+                <h4>IKEv2</h4>
+                <div class="performance-stats">
+                    <div class="stat">Connections: <span id="ikev2-connections">0</span></div>
+                    <div class="stat">Bandwidth: <span id="ikev2-bandwidth">0 MB/s</span></div>
+                    <div class="stat">Latency: <span id="ikev2-latency">0ms</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

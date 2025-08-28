@@ -1,0 +1,101 @@
+<div class="page-header">
+    <h2>System Overview</h2>
+    <p>Real-time status of all VPN services and system resources</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-server"></i>
+        </div>
+        <div class="stat-content">
+            <h3>System Status</h3>
+            <div class="stat-value" id="system-status">Loading...</div>
+            <div class="stat-label">Overall Health</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-users"></i>
+        </div>
+        <div class="stat-content">
+            <h3>Active Users</h3>
+            <div class="stat-value" id="active-users">0</div>
+            <div class="stat-label">Connected Clients</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-network-wired"></i>
+        </div>
+        <div class="stat-content">
+            <h3>WireGuard</h3>
+            <div class="stat-value" id="wireguard-status">Loading...</div>
+            <div class="stat-label">Service Status</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-lock"></i>
+        </div>
+        <div class="stat-content">
+            <h3>OpenVPN</h3>
+            <div class="stat-value" id="openvpn-status">Loading...</div>
+            <div class="stat-label">Service Status</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-key"></i>
+        </div>
+        <div class="stat-content">
+            <h3>IKEv2</h3>
+            <div class="stat-value" id="ikev2-status">Loading...</div>
+            <div class="stat-label">Service Status</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div class="stat-content">
+            <h3>Bandwidth</h3>
+            <div class="stat-value" id="bandwidth-usage">0 MB/s</div>
+            <div class="stat-label">Current Usage</div>
+        </div>
+    </div>
+</div>
+
+<div class="charts-section">
+    <div class="chart-container">
+        <h3>System Resources</h3>
+        <div class="resource-bars">
+            <div class="resource-bar">
+                <label>CPU Usage</label>
+                <div class="progress-bar">
+                    <div class="progress" id="cpu-progress" style="width: 0%"></div>
+                </div>
+                <span id="cpu-percent">0%</span>
+            </div>
+            <div class="resource-bar">
+                <label>Memory Usage</label>
+                <div class="progress-bar">
+                    <div class="progress" id="memory-progress" style="width: 0%"></div>
+                </div>
+                <span id="memory-percent">0%</span>
+            </div>
+            <div class="resource-bar">
+                <label>Disk Usage</label>
+                <div class="progress-bar">
+                    <div class="progress" id="disk-progress" style="width: 0%"></div>
+                </div>
+                <span id="disk-percent">0%</span>
+            </div>
+        </div>
+    </div>
+</div>

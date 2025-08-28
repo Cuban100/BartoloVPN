@@ -1,0 +1,60 @@
+<!-- IKEv2 Management Component -->
+<div id="ikev2-tab" class="tab-content" style="display: none;">
+    <div class="page-header">
+        <h2>IKEv2 VPN</h2>
+        <p>Manage IKEv2 VPN connections and configurations</p>
+    </div>
+    
+    <div class="content-section">
+        <div class="section-header">
+            <h3>IKEv2 Status</h3>
+            <div class="status-indicator" id="ikev2-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Loading...</span>
+            </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Active Connections</h3>
+                    <div class="stat-value" id="ikev2-connections">0</div>
+                    <div class="stat-label">Connected Users</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-key"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Server Status</h3>
+                    <div class="stat-value" id="ikev2-server-status">Running</div>
+                    <div class="stat-label">Ports 500/4500</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section-header">
+            <h3>Configuration</h3>
+        </div>
+        
+        <div class="config-section">
+            <div class="config-item">
+                <label>Pre-shared Key:</label>
+                <div class="config-value" id="ikev2-psk">BartoloVPN2025SecureKey!@ensilenciohatenidoqueser</div>
+            </div>
+            <div class="config-item">
+                <label>Username:</label>
+                <div class="config-value" id="ikev2-username">vpnuser</div>
+            </div>
+            <div class="config-item">
+                <label>Password:</label>
+                <div class="config-value" id="ikev2-password">vpnpass-change-this</div>
+            </div>
+        </div>
+    </div>
+</div>

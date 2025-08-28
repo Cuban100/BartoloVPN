@@ -1,0 +1,65 @@
+<!-- WireGuard Management Component -->
+<div id="wireguard-tab" class="tab-content" style="display: none;">
+    <div class="page-header">
+        <h2>WireGuard VPN</h2>
+        <p>Manage WireGuard VPN connections and configurations</p>
+    </div>
+    
+    <div class="content-section">
+        <div class="section-header">
+            <h3>WireGuard Status</h3>
+            <div class="status-indicator" id="wireguard-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Loading...</span>
+            </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Active Connections</h3>
+                    <div class="stat-value" id="wireguard-connections">0</div>
+                    <div class="stat-label">Connected Users</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-network-wired"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Server Status</h3>
+                    <div class="stat-value" id="wireguard-server-status">Running</div>
+                    <div class="stat-label">Port 51820</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section-header">
+            <h3>Peer Management</h3>
+            <button class="btn btn-primary" onclick="showAddPeerModal()">
+                <i class="fas fa-plus"></i> Add Peer
+            </button>
+        </div>
+        
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Public Key</th>
+                        <th>IP Address</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="wireguard-peers-table">
+                    <!-- Peers will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

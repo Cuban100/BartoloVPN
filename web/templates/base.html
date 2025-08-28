@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}BartoloVPN - Multi-Protocol VPN Server{% endblock %}</title>
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/users.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/config.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/monitoring.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div id="app">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-info">
+                <span>&copy; 2025 BartoloVPN</span>
+                <span>•</span>
+                                   <span>Developed by <a href="https://github.com/Cuban100" target="_blank">Erick Vladimir Salgado</a></span>
+                <span>•</span>
+                <span><a href="https://opensource.org/licenses/MIT" target="_blank">MIT License</a></span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript Files -->
+    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+    <script src="{{ url_for('static', path='js/auth.js') }}"></script>
+    <script src="{{ url_for('static', path='js/dashboard.js') }}"></script>
+    <script src="{{ url_for('static', path='js/users.js') }}"></script>
+    <script src="{{ url_for('static', path='js/wireguard.js') }}"></script>
+    <script src="{{ url_for('static', path='js/openvpn.js') }}"></script>
+    <script src="{{ url_for('static', path='js/ikev2.js') }}"></script>
+    <script src="{{ url_for('static', path='js/monitoring.js') }}"></script>
+    <script src="{{ url_for('static', path='js/settings.js') }}"></script>
+    <script src="{{ url_for('static', path='js/utils.js') }}"></script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

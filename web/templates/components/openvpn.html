@@ -1,0 +1,65 @@
+<!-- OpenVPN Management Component -->
+<div id="openvpn-tab" class="tab-content" style="display: none;">
+    <div class="page-header">
+        <h2>OpenVPN</h2>
+        <p>Manage OpenVPN connections and configurations</p>
+    </div>
+    
+    <div class="content-section">
+        <div class="section-header">
+            <h3>OpenVPN Status</h3>
+            <div class="status-indicator" id="openvpn-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Loading...</span>
+            </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Active Connections</h3>
+                    <div class="stat-value" id="openvpn-connections">0</div>
+                    <div class="stat-label">Connected Users</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-lock"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Server Status</h3>
+                    <div class="stat-value" id="openvpn-server-status">Running</div>
+                    <div class="stat-label">Port 1194</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section-header">
+            <h3>Client Management</h3>
+            <button class="btn btn-primary" onclick="showAddOpenVPNClientModal()">
+                <i class="fas fa-plus"></i> Add Client
+            </button>
+        </div>
+        
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>IP Address</th>
+                        <th>Connected Since</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="openvpn-clients-table">
+                    <!-- Clients will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

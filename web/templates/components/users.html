@@ -1,0 +1,33 @@
+<!-- Users Management Component -->
+<div id="users-tab" class="tab-content" style="display: none;">
+    <div class="page-header">
+        <h2>User Management</h2>
+        <p>Manage VPN users, permissions, and access controls</p>
+    </div>
+    
+    <div class="content-section">
+        <div class="section-header">
+            <h3>Users</h3>
+            <button class="btn btn-primary" onclick="showAddUserModal()">
+                <i class="fas fa-plus"></i> Add User
+            </button>
+        </div>
+        
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body">
+                    <!-- Users will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

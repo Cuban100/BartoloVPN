@@ -1,0 +1,94 @@
+<!-- Settings Component -->
+<div id="settings-tab" class="tab-content" style="display: none;">
+    <div class="page-header">
+        <h2>System Settings</h2>
+        <p>Configure system preferences and VPN settings</p>
+    </div>
+    
+    <div class="content-section">
+        <div class="section-header">
+            <h3>General Settings</h3>
+        </div>
+        
+        <div class="settings-form">
+            <div class="form-group">
+                <label for="server-ip">Server IP Address</label>
+                <input type="text" id="server-ip" value="72.238.72.252" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label for="domain">Domain</label>
+                <input type="text" id="domain" value="caveplex.com" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label for="timezone">Timezone</label>
+                <select id="timezone">
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">Eastern Time</option>
+                    <option value="America/Chicago">Central Time</option>
+                    <option value="America/Denver">Mountain Time</option>
+                    <option value="America/Los_Angeles">Pacific Time</option>
+                    <option value="Europe/London">London</option>
+                    <option value="Europe/Paris">Paris</option>
+                    <option value="Asia/Tokyo">Tokyo</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="section-header">
+            <h3>VPN Settings</h3>
+        </div>
+        
+        <div class="settings-form">
+            <div class="form-group">
+                <label for="dns-servers">DNS Servers</label>
+                <input type="text" id="dns-servers" value="1.1.1.1,8.8.8.8">
+            </div>
+            
+            <div class="form-group">
+                <label for="encryption-level">Encryption Level</label>
+                <select id="encryption-level">
+                    <option value="128">128-bit</option>
+                    <option value="256" selected>256-bit</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="kill-switch">Kill Switch</label>
+                <input type="checkbox" id="kill-switch" checked>
+                <span class="checkbox-label">Enable kill switch for VPN connections</span>
+            </div>
+        </div>
+        
+        <div class="section-header">
+            <h3>Logging</h3>
+        </div>
+        
+        <div class="settings-form">
+            <div class="form-group">
+                <label for="log-level">Log Level</label>
+                <select id="log-level">
+                    <option value="DEBUG">Debug</option>
+                    <option value="INFO" selected>Info</option>
+                    <option value="WARNING">Warning</option>
+                    <option value="ERROR">Error</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="log-retention">Log Retention (days)</label>
+                <input type="number" id="log-retention" value="30" min="1" max="365">
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveSettings()">
+                <i class="fas fa-save"></i> Save Settings
+            </button>
+            <button class="btn btn-secondary" onclick="resetSettings()">
+                <i class="fas fa-undo"></i> Reset to Defaults
+            </button>
+        </div>
+    </div>
+</div>

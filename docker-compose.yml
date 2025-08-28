@@ -1,0 +1,174 @@
+
+services:
+  # WireGuard VPN Server
+  wireguard:
+    image: linuxserver/wireguard:latest
+    container_name: bartolo-wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - SERVERURL=${SERVER_IP}
+      - SERVERPORT=${WIREGUARD_PORT:-51820}
+      - PEERS=${WIREGUARD_PEERS:-10}
+      - PEERDNS=${WIREGUARD_DNS:-1.1.1.1}
+      - INTERNAL_SUBNET=${WIREGUARD_SUBNET:-10.13.13.0}
+      - ALLOWEDIPS=${WIREGUARD_ALLOWED_IPS:-0.0.0.0/0}
+    volumes:
+      - ./config/wireguard:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - "${WIREGUARD_PORT:-51820}:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
+    networks:
+      - vpn-network
+      - vpn-external
+
+  # OpenVPN Server
+  openvpn:
+    image: kylemanna/openvpn:latest
+    container_name: bartolo-openvpn
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      - ./config/openvpn:/etc/openvpn
+      - ./scripts:/scripts
+    ports:
+      - "${OPENVPN_PORT:-1194}:1194/udp"
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
+    restart: unless-stopped
+    networks:
+      - vpn-network
+      - vpn-external
+    depends_on:
+      - wireguard
+    command: /scripts/init-openvpn-proper.sh
+
+  # IKEv2 VPN Server (using strongSwan)
+  ikev2:
+    image: hwdsl2/ipsec-vpn-server:latest
+    container_name: bartolo-ikev2
+    privileged: true
+    environment:
+      - VPN_IPSEC_PSK=${IKEV2_PSK:-your-ikev2-psk}
+      - VPN_USER=${IKEV2_USER:-vpnuser}
+      - VPN_PASSWORD=${IKEV2_PASSWORD:-vpnpass}
+    ports:
+      - "500:500/udp"
+      - "4500:4500/udp"
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.accept_redirects=0
+      - net.ipv4.conf.all.send_redirects=0
+      - net.ipv4.conf.all.rp_filter=1
+      - net.ipv4.conf.default.accept_redirects=0
+      - net.ipv4.conf.default.send_redirects=0
+      - net.ipv4.conf.default.rp_filter=1
+    restart: unless-stopped
+    networks:
+      - vpn-network
+      - vpn-external
+    depends_on:
+      - wireguard
+
+
+
+  # VPN Management API
+  vpn-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: bartolo-vpn-api
+    environment:
+      - SERVER_IP=72.238.72.252
+      - DOMAIN=caveplex.com
+      - WEB_PORT=8080
+      - WEB_USERNAME=admin
+      - WEB_PASSWORD=your-secure-password-change-this
+      - WIREGUARD_ENABLED=true
+      - WIREGUARD_PORT=51820
+      - WIREGUARD_PEERS=10
+      - WIREGUARD_DNS=1.1.1.1,8.8.8.8
+      - WIREGUARD_SUBNET=10.13.13.0
+      - WIREGUARD_ALLOWED_IPS=0.0.0.0/0
+      - OPENVPN_ENABLED=true
+      - OPENVPN_PORT=1194
+      - OPENVPN_PROTOCOL=udp
+      - OPENVPN_CIPHER=AES-256-GCM
+      - OPENVPN_AUTH=SHA256
+      - IKEV2_ENABLED=true
+      - IKEV2_PSK=BartoloVPN2025SecureKey!@ensilenciohatenidoqueser
+      - IKEV2_USER=vpnuser
+      - IKEV2_PASSWORD=vpnpass-change-this
+      - ENCRYPTION_LEVEL=256
+      - DNS_SERVERS=1.1.1.1,8.8.8.8
+      - KILL_SWITCH_ENABLED=true
+      - LOG_LEVEL=INFO
+      - LOG_RETENTION_DAYS=30
+      - MONITORING_ENABLED=true
+      - BANDWIDTH_LIMIT_MB=1000
+      - JWT_SECRET_KEY=your-super-secret-jwt-key-change-this-in-production
+      - LOCAL_IP=192.168.0.2
+      - LOCAL_IPV6=fdbb:e478:7618:fa6a:fd95:9ab7:18e3:21eb
+      - PREVIOUS_IPS=81.171.74.47,72.238.72.252
+      - WIREGUARD_CONFIG_PATH=/config/wireguard
+      - OPENVPN_CONFIG_PATH=/config/openvpn
+      - IKEV2_CONFIG_PATH=/config/ikev2
+    volumes:
+      - ./config:/config
+      - ./api:/app
+      - ./web:/app/web
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    networks:
+      - vpn-network
+    depends_on:
+      - wireguard
+      - openvpn
+      - ikev2
+
+  # Load Balancer / IP Rotator
+  haproxy:
+    image: haproxy:alpine
+    container_name: bartolo-haproxy
+    ports:
+      - "8081:80"
+      - "8443:443"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    restart: unless-stopped
+    networks:
+      - vpn-network
+      - vpn-external
+    depends_on:
+      - wireguard
+      - openvpn
+      - ikev2
+
+networks:
+  vpn-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+          gateway: 172.25.0.1
+  vpn-external:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.15.15.0/24
+          gateway: 10.15.15.1

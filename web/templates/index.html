@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <!-- Login Screen -->
+    {% include "components/login.html" %}
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="dashboard-container hidden">
+        <!-- Navigation -->
+        {% include "components/navigation.html" %}
+
+        <!-- Content Area -->
+        <main class="main-content">
+            <!-- Overview Tab -->
+            <div id="overview" class="tab-content active">
+                {% include "components/overview.html" %}
+            </div>
+
+            <!-- Users Tab -->
+            <div id="users" class="tab-content">
+                {% include "components/users.html" %}
+            </div>
+
+            <!-- WireGuard Tab -->
+            <div id="wireguard" class="tab-content">
+                {% include "components/wireguard.html" %}
+            </div>
+
+            <!-- OpenVPN Tab -->
+            <div id="openvpn" class="tab-content">
+                {% include "components/openvpn.html" %}
+            </div>
+
+            <!-- IKEv2 Tab -->
+            <div id="ikev2" class="tab-content">
+                {% include "components/ikev2.html" %}
+            </div>
+
+            <!-- Monitoring Tab -->
+            <div id="monitoring" class="tab-content">
+                {% include "components/monitoring.html" %}
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settings" class="tab-content">
+                {% include "components/settings.html" %}
+            </div>
+        </main>
+    </div>
+{% endblock %}

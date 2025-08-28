@@ -1,0 +1,65 @@
+<!-- Login Screen -->
+<div id="login-screen" class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <i class="fas fa-shield-alt"></i>
+            <h1>BartoloVPN</h1>
+            <p>Multi-Protocol VPN Server Management</p>
+        </div>
+        
+        <!-- Login Form -->
+        <form id="login-form" class="login-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+        </form>
+        
+        <!-- Registration Form (Hidden by default) -->
+        <form id="register-form" class="login-form" style="display: none;">
+            <div class="form-group">
+                <label for="reg-username">Username</label>
+                <input type="text" id="reg-username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="reg-email">Email</label>
+                <input type="email" id="reg-email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="reg-password">Password</label>
+                <input type="password" id="reg-password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label for="reg-confirm-password">Confirm Password</label>
+                <input type="password" id="reg-confirm-password" name="confirm_password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-user-plus"></i> Register
+            </button>
+        </form>
+        
+        <div id="login-error" class="error-message"></div>
+        <div id="register-error" class="error-message"></div>
+        
+        <!-- Toggle between Login and Register -->
+        <div class="form-toggle">
+            <span id="toggle-text">Don't have an account?</span>
+            <button type="button" id="toggle-form" class="btn btn-link">
+                <span id="toggle-button-text">Register</span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Login Footer -->
+    <div class="login-footer">
+                   <p>Developed by <a href="https://github.com/Cuban100" target="_blank">Erick Vladimir Salgado</a></p>
+        <p><a href="https://opensource.org/licenses/MIT" target="_blank">MIT License</a></p>
+    </div>
+</div>
