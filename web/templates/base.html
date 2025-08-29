@@ -7,10 +7,6 @@
     
     <!-- CSS Files -->
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/dashboard.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/users.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/config.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/monitoring.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
     {% block extra_css %}{% endblock %}
@@ -35,15 +31,6 @@
 
     <!-- JavaScript Files -->
     <script src="{{ url_for('static', path='js/app.js') }}"></script>
-    <script src="{{ url_for('static', path='js/auth.js') }}"></script>
-    <script src="{{ url_for('static', path='js/dashboard.js') }}"></script>
-    <script src="{{ url_for('static', path='js/users.js') }}"></script>
-    <script src="{{ url_for('static', path='js/wireguard.js') }}"></script>
-    <script src="{{ url_for('static', path='js/openvpn.js') }}"></script>
-    <script src="{{ url_for('static', path='js/ikev2.js') }}"></script>
-    <script src="{{ url_for('static', path='js/monitoring.js') }}"></script>
-    <script src="{{ url_for('static', path='js/settings.js') }}"></script>
-    <script src="{{ url_for('static', path='js/utils.js') }}"></script>
     
     {% block extra_js %}{% endblock %}
 </body>
