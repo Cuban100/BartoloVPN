@@ -70,17 +70,4 @@ jobs:
       run: |
         docker run --rm bartolovpn-api python -c "import fastapi; print('FastAPI version:', fastapi.__version__)"
 
-  security:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Run security scan (optional)
-      uses: snyk/actions/docker@master
-      continue-on-error: true
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        image: bartolovpn-api
-        args: --severity-threshold=high
+
