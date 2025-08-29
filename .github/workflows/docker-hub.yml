@@ -1,5 +1,14 @@
 name: Deploy to Docker Hub
 
+# Note: This workflow requires the following secrets to be configured in GitHub:
+# - DOCKERHUB_USERNAME: Your Docker Hub username
+# - DOCKERHUB_TOKEN: Your Docker Hub access token
+# 
+# To configure these secrets:
+# 1. Go to your GitHub repository settings
+# 2. Navigate to Secrets and variables > Actions
+# 3. Add the required secrets
+
 on:
   push:
     tags:
@@ -17,6 +26,7 @@ jobs:
     
     - name: Login to Docker Hub
       uses: docker/login-action@v3
+      continue-on-error: true
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
