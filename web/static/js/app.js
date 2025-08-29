@@ -52,9 +52,9 @@ async function handleLogin(event) {
             currentUser = { username: data.username };
             isLoggedIn = true;
             
-            console.log('Login successful, showing dashboard...');
-            // Show dashboard
-            showDashboard();
+            console.log('Login successful, redirecting to dashboard...');
+            // Redirect to dashboard
+            window.location.href = '/dashboard';
         } else {
             loginError.textContent = data.detail || 'Login failed';
         }
@@ -119,11 +119,13 @@ function showDashboard() {
     
     if (loginScreen) {
         loginScreen.style.display = 'none';
+        loginScreen.classList.add('hidden');
         console.log('Login screen hidden');
     }
     
     if (dashboard) {
         dashboard.style.display = 'block';
+        dashboard.classList.remove('hidden');
         console.log('Dashboard shown');
     }
     
@@ -142,11 +144,10 @@ function showDashboard() {
 
 // Show login screen
 function showLogin() {
-    dashboard.style.display = 'none';
-    loginScreen.style.display = 'block';
     localStorage.removeItem('authToken');
     currentUser = null;
     isLoggedIn = false;
+    window.location.href = '/login';
 }
 
 // Load dashboard data

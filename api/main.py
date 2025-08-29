@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -436,8 +436,32 @@ app.add_middleware(
 # API Routes
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Root endpoint - serves web interface"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    """Root endpoint - redirects to login"""
+    return RedirectResponse(url="/login")
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Login page"""
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    """Dashboard page - requires authentication"""
+    # Check for auth token in cookies or redirect to login
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token:
+        return RedirectResponse(url="/login")
+    
+    try:
+        # Validate token
+        payload = jwt.decode(auth_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        username = payload.get("sub")
+        if not username:
+            return RedirectResponse(url="/login")
+    except JWTError:
+        return RedirectResponse(url="/login")
+    
+    return templates.TemplateResponse("dashboard.html", {"request": request, "username": username})
 
 @app.get("/api")
 async def api_info():
@@ -544,7 +568,22 @@ async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db))
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer", "username": user.username}
+    
+    response = {"access_token": access_token, "token_type": "bearer", "username": user.username}
+    
+    # Set cookie for authentication
+    from fastapi.responses import JSONResponse
+    json_response = JSONResponse(content=response)
+    json_response.set_cookie(
+        key="auth_token",
+        value=access_token,
+        max_age=settings.jwt_expire_minutes * 60,
+        httponly=True,
+        secure=False,  # Set to True in production with HTTPS
+        samesite="lax"
+    )
+    
+    return json_response
 
 @app.get("/users/me", response_model=UserResponse)
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
