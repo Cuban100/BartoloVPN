@@ -78,7 +78,7 @@ docker-compose ps
 ### 4. Access the Web Interface
 - **Local Access**: http://localhost:5000
 - **Remote Access**: http://your-server-ip:5000
-- **Default Admin**: admin/admin
+- **Default Admin**: Use credentials from your `.env` file (WEB_USERNAME/WEB_PASSWORD)
 
 ## 📋 Configuration
 

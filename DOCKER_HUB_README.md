@@ -24,6 +24,7 @@ docker-compose up -d
 
 # Access web interface
 open http://localhost:5000
+# Default credentials: Use WEB_USERNAME/WEB_PASSWORD from your .env file
 ```
 
 ### Using Docker Run

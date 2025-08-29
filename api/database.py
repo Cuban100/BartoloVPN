@@ -154,9 +154,9 @@ async def create_default_admin():
         if not admin:
             admin_user = User(
                 id=1,
-                username="admin",
-                email="admin@bartolovpn.com",
-                hashed_password=pwd_context.hash("admin"),
+                username=settings.web_username,
+                email=f"{settings.web_username}@bartolovpn.com",
+                hashed_password=pwd_context.hash(settings.web_password),
                 role="admin",
                 is_active=True,
                 created_at=datetime.utcnow(),
@@ -169,7 +169,7 @@ async def create_default_admin():
             )
             session.add(admin_user)
             await session.commit()
-            print("Created default admin user (admin/admin)")
+            print(f"Created default admin user ({settings.web_username})")
 
 async def create_default_endpoints():
     """Create default server endpoints"""

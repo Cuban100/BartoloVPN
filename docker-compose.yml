@@ -92,12 +92,9 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: bartolo-vpn-api
+    env_file:
+      - .env
     environment:
-      - SERVER_IP=72.238.72.252
-      - DOMAIN=caveplex.com
-      - WEB_PORT=8080
-      - WEB_USERNAME=admin
-      - WEB_PASSWORD=your-secure-password-change-this
       - WIREGUARD_ENABLED=true
       - WIREGUARD_PORT=51820
       - WIREGUARD_PEERS=10
