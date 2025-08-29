@@ -151,7 +151,7 @@ We use [Semantic Versioning](https://semver.org/):
 ### Communication Channels
 - **Issues**: [GitHub Issues](https://github.com/Cuban100/BartoloVPN/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Cuban100/BartoloVPN/discussions)
-- **Email**: admin@bartolovpn.com
+- **Email**: pctechservices.llc@gmail.com
 
 ### Code of Conduct
 - Be respectful and inclusive

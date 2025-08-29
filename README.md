@@ -221,7 +221,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Erick Vladimir Salgado**
 - GitHub: [@Cuban100](https://github.com/Cuban100)
-- Email: admin@bartolovpn.com
+- Email: pctechservices.llc@gmail.com
 
 ## 🙏 Acknowledgments
 
