@@ -111,8 +111,7 @@ OPENVPN_AUTH=SHA256
 # IKEv2 Configuration
 IKEV2_ENABLED={'true' if config['ikev2_enabled'] else 'false'}
 IKEV2_PSK=your-ikev2-pre-shared-key
-IKEV2_USER=vpnuser
-IKEV2_PASSWORD=vpnpass
+
 
 # Security Settings
 ENCRYPTION_LEVEL={config['encryption_level']}

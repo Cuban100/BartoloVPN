@@ -39,8 +39,7 @@ class Settings(BaseSettings):
     # IKEv2 Configuration
     ikev2_enabled: bool = Field(True, env="IKEV2_ENABLED")
     ikev2_psk: str = Field(..., env="IKEV2_PSK")
-    ikev2_user: str = Field("vpnuser", env="IKEV2_USER")
-    ikev2_password: str = Field(..., env="IKEV2_PASSWORD")
+
     
     # Security Settings
     encryption_level: int = Field(256, env="ENCRYPTION_LEVEL")

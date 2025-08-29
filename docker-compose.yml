@@ -108,8 +108,7 @@ services:
       - OPENVPN_AUTH=SHA256
       - IKEV2_ENABLED=true
       - IKEV2_PSK=BartoloVPN2025SecureKey!@ensilenciohatenidoqueser
-      - IKEV2_USER=vpnuser
-      - IKEV2_PASSWORD=vpnpass-change-this
+
       - ENCRYPTION_LEVEL=256
       - DNS_SERVERS=1.1.1.1,8.8.8.8
       - KILL_SWITCH_ENABLED=true
