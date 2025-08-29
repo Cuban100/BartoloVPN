@@ -84,23 +84,27 @@ async function handleLogin(event) {
 
 // Logout functionality
 async function handleLogout() {
+    console.log('Logout function called');
+    
     try {
+        // Clear local storage first
+        localStorage.removeItem('authToken');
+        currentUser = null;
+        isLoggedIn = false;
+        
         const response = await fetch('/auth/logout', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include' // Include cookies
         });
         
-        if (response.ok) {
-            // Clear local storage
-            localStorage.removeItem('authToken');
-            currentUser = null;
-            isLoggedIn = false;
-            
-            // Redirect to login
-            window.location.href = '/login';
-        }
+        console.log('Logout response:', response.status);
+        
+        // Always redirect to login regardless of response
+        window.location.href = '/login';
+        
     } catch (error) {
         console.error('Logout error:', error);
         // Still redirect to login even if logout fails
