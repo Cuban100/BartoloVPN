@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # JWT Configuration
     jwt_secret_key: str = Field(..., env="JWT_SECRET_KEY")
     jwt_algorithm: str = Field("HS256", env="JWT_ALGORITHM")
-    jwt_expire_minutes: int = Field(1440, env="JWT_EXPIRE_MINUTES")  # 24 hours
+    jwt_expire_minutes: int = Field(60, env="JWT_EXPIRE_MINUTES")  # 1 hour
     
     # Local Network Configuration
     local_ip: str = Field("", env="LOCAL_IP")

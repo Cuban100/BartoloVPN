@@ -35,6 +35,13 @@ async function handleLogin(event) {
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     
+    // Show loading state
+    const loginButton = document.getElementById('login-button');
+    const originalText = loginButton.textContent;
+    loginButton.textContent = 'Logging in...';
+    loginButton.disabled = true;
+    loginError.textContent = '';
+    
     try {
         const response = await fetch('/auth/login', {
             method: 'POST',
@@ -47,20 +54,58 @@ async function handleLogin(event) {
         const data = await response.json();
         
         if (response.ok) {
+            // Show success message
+            loginError.style.color = 'green';
+            loginError.textContent = 'Login successful! Redirecting...';
+            
             // Store token
             localStorage.setItem('authToken', data.access_token);
             currentUser = { username: data.username };
             isLoggedIn = true;
             
-            console.log('Login successful, redirecting to dashboard...');
-            // Redirect to dashboard
-            window.location.href = '/dashboard';
+            // Redirect to dashboard after a short delay
+            setTimeout(() => {
+                window.location.href = '/dashboard';
+            }, 1000);
         } else {
+            loginError.style.color = 'red';
             loginError.textContent = data.detail || 'Login failed';
         }
     } catch (error) {
         console.error('Login error:', error);
+        loginError.style.color = 'red';
         loginError.textContent = 'Network error. Please try again.';
+    } finally {
+        // Reset button state
+        loginButton.textContent = originalText;
+        loginButton.disabled = false;
+    }
+}
+
+// Logout functionality
+async function handleLogout() {
+    try {
+        const response = await fetch('/auth/logout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        
+        if (response.ok) {
+            // Clear local storage
+            localStorage.removeItem('authToken');
+            currentUser = null;
+            isLoggedIn = false;
+            
+            // Redirect to login
+            window.location.href = '/login';
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+        // Still redirect to login even if logout fails
+        localStorage.removeItem('authToken');
+        window.location.href = '/login';
     }
 }
 
@@ -97,9 +142,14 @@ async function handleRegister(event) {
         const data = await response.json();
         
         if (response.ok) {
-            // Registration successful, switch to login
-            registerError.textContent = '';
-            toggleLoginRegister();
+            // Show success message
+            registerError.style.color = 'green';
+            registerError.textContent = 'Registration successful! Please login.';
+            
+            // Switch to login form after a delay
+            setTimeout(() => {
+                toggleLoginRegister();
+            }, 2000);
             document.getElementById('username').value = username;
             loginError.textContent = 'Registration successful! Please login.';
         } else {

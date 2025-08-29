@@ -445,7 +445,7 @@ async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request):
+async def dashboard_page(request: Request, db: AsyncSession = Depends(get_db)):
     """Dashboard page - requires authentication"""
     # Check for auth token in cookies or redirect to login
     auth_token = request.cookies.get("auth_token")
@@ -458,6 +458,18 @@ async def dashboard_page(request: Request):
         username = payload.get("sub")
         if not username:
             return RedirectResponse(url="/login")
+        
+        # Check if user exists in database
+        result = await db.execute(select(User).where(User.username == username))
+        user = result.scalar_one_or_none()
+        if not user:
+            return RedirectResponse(url="/login")
+        
+        # Check if token is expired
+        exp = payload.get("exp")
+        if exp and datetime.utcnow().timestamp() > exp:
+            return RedirectResponse(url="/login")
+            
     except JWTError:
         return RedirectResponse(url="/login")
     
@@ -616,6 +628,13 @@ async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db))
     )
     
     return json_response
+
+@app.post("/auth/logout")
+async def logout():
+    """User logout - clears the auth cookie"""
+    response = JSONResponse(content={"message": "Logged out successfully"})
+    response.delete_cookie(key="auth_token")
+    return response
 
 @app.get("/users/me", response_model=UserResponse)
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
