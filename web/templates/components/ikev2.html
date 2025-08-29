@@ -55,4 +55,597 @@
                 <div class="config-value" id="ikev2-password">vpnpass-change-this</div>
             </div>
         </div>
+        
+        <div class="section-header">
+            <h3>User Management</h3>
+            <button class="btn btn-primary" onclick="showAddIKEv2UserModal()">
+                <i class="fas fa-user-plus"></i> Add User
+            </button>
+        </div>
+        
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Last Connection</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="ikev2-users-table">
+                    <!-- Users will be loaded here -->
+                </tbody>
+            </table>
+        </div>
     </div>
+
+    <!-- Setup Instructions Section -->
+    <div class="content-section">
+        <div class="section-header">
+            <h3>Setup Instructions</h3>
+            <button class="btn btn-secondary" onclick="toggleIKEv2Instructions()">
+                <i class="fas fa-book"></i> <span id="ikev2-instructions-toggle">Show Instructions</span>
+            </button>
+        </div>
+        
+        <div id="ikev2-instructions" class="instructions-container" style="display: none;">
+            <!-- OS Detection -->
+            <div class="os-detection">
+                <h4><i class="fas fa-desktop"></i> Select Your Operating System</h4>
+                <div class="os-selector">
+                    <button class="os-btn" onclick="showIKEv2OSInstructions('windows')" id="ikev2-os-windows">
+                        <i class="fab fa-windows"></i> Windows
+                    </button>
+                    <button class="os-btn" onclick="showIKEv2OSInstructions('macos')" id="ikev2-os-macos">
+                        <i class="fab fa-apple"></i> macOS
+                    </button>
+                    <button class="os-btn" onclick="showIKEv2OSInstructions('linux')" id="ikev2-os-linux">
+                        <i class="fab fa-linux"></i> Linux
+                    </button>
+                    <button class="os-btn" onclick="showIKEv2OSInstructions('android')" id="ikev2-os-android">
+                        <i class="fab fa-android"></i> Android
+                    </button>
+                    <button class="os-btn" onclick="showIKEv2OSInstructions('ios')" id="ikev2-os-ios">
+                        <i class="fab fa-app-store-ios"></i> iOS
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Windows Instructions -->
+            <div id="ikev2-windows-instructions" class="os-instructions" style="display: none;">
+                <h4><i class="fab fa-windows"></i> Windows 10/11 IKEv2 Setup</h4>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">1</span> Open VPN Settings</h5>
+                    <ol>
+                        <li>Click <strong>Start</strong> → <strong>Settings</strong> (gear icon)</li>
+                        <li>Navigate to <strong>Network & Internet</strong> → <strong>VPN</strong></li>
+                        <li>Click <strong>"Add a VPN connection"</strong></li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">2</span> Configure VPN Connection</h5>
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>VPN provider:</label>
+                            <span class="config-value">Windows (built-in)</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Connection name:</label>
+                            <span class="config-value">BartoloVPN IKEv2</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Server name or address:</label>
+                            <span class="config-value" id="windows-server-ip">YOUR_SERVER_IP</span>
+                            <button class="copy-btn small" onclick="copyServerIP()">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>VPN type:</label>
+                            <span class="config-value">IKEv2</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Type of sign-in info:</label>
+                            <span class="config-value">User name and password</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Username:</label>
+                            <span class="config-value" id="windows-username">vpnuser</span>
+                            <button class="copy-btn small" onclick="copyText('windows-username')">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Password:</label>
+                            <span class="config-value" id="windows-password">vpnpass-change-this</span>
+                            <button class="copy-btn small" onclick="copyText('windows-password')">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">3</span> Advanced Settings (Optional)</h5>
+                    <ol>
+                        <li>After creating the connection, click on it and select <strong>"Advanced options"</strong></li>
+                        <li>Under Connection properties, you can import the CA certificate for enhanced security</li>
+                        <li>Enable <strong>"Remember my sign-in info"</strong> for automatic connection</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">4</span> Connect to VPN</h5>
+                    <ol>
+                        <li>Click the VPN connection you just created</li>
+                        <li>Click <strong>"Connect"</strong></li>
+                        <li>Wait for the connection to establish</li>
+                        <li>Once connected, you'll see "Connected" status</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">5</span> Verify Connection</h5>
+                    <div class="verification-links">
+                        <a href="https://whatismyipaddress.com/" target="_blank" class="btn btn-outline">
+                            <i class="fas fa-globe"></i> Check Your IP Address
+                        </a>
+                    </div>
+                    <p>Your IP should now show the VPN server location.</p>
+                </div>
+                
+                <div class="troubleshoot-section">
+                    <h5><i class="fas fa-wrench"></i> Windows Troubleshooting</h5>
+                    <div class="troubleshoot-item">
+                        <h6>Connection Failed</h6>
+                        <ul>
+                            <li>Verify server address is correct</li>
+                            <li>Check Windows Firewall settings</li>
+                            <li>Try connecting to a different network</li>
+                            <li>Run Windows Network Troubleshooter</li>
+                        </ul>
+                    </div>
+                    <div class="troubleshoot-item">
+                        <h6>Authentication Failed</h6>
+                        <ul>
+                            <li>Double-check username and password</li>
+                            <li>Ensure caps lock is off</li>
+                            <li>Try recreating the VPN connection</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- macOS Instructions -->
+            <div id="ikev2-macos-instructions" class="os-instructions" style="display: none;">
+                <h4><i class="fab fa-apple"></i> macOS IKEv2 Setup</h4>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">1</span> Open Network Settings</h5>
+                    <ol>
+                        <li>Click <strong>Apple menu</strong> → <strong>System Preferences</strong></li>
+                        <li>Click <strong>Network</strong></li>
+                        <li>Click the <strong>"+"</strong> button to add a new connection</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">2</span> Configure VPN</h5>
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>Interface:</label>
+                            <span class="config-value">VPN</span>
+                        </div>
+                        <div class="config-item">
+                            <label>VPN Type:</label>
+                            <span class="config-value">IKEv2</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Service Name:</label>
+                            <span class="config-value">BartoloVPN IKEv2</span>
+                        </div>
+                    </div>
+                    <p>Click <strong>"Create"</strong> to proceed.</p>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">3</span> Authentication Settings</h5>
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>Server Address:</label>
+                            <span class="config-value" id="macos-server-ip">YOUR_SERVER_IP</span>
+                            <button class="copy-btn small" onclick="copyServerIP()">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Remote ID:</label>
+                            <span class="config-value" id="macos-remote-id">YOUR_SERVER_IP</span>
+                            <button class="copy-btn small" onclick="copyServerIP()">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Local ID:</label>
+                            <span class="config-value">Leave blank</span>
+                        </div>
+                    </div>
+                    
+                    <p>Click <strong>"Authentication Settings..."</strong> and configure:</p>
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>Authentication:</label>
+                            <span class="config-value">Username</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Username:</label>
+                            <span class="config-value" id="macos-username">vpnuser</span>
+                            <button class="copy-btn small" onclick="copyText('macos-username')">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Password:</label>
+                            <span class="config-value" id="macos-password">vpnpass-change-this</span>
+                            <button class="copy-btn small" onclick="copyText('macos-password')">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">4</span> Apply Settings</h5>
+                    <ol>
+                        <li>Click <strong>"OK"</strong> to close Authentication Settings</li>
+                        <li>Click <strong>"Apply"</strong> to save the configuration</li>
+                        <li>The VPN connection is now ready to use</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">5</span> Connect to VPN</h5>
+                    <ol>
+                        <li>Select your VPN connection in Network preferences</li>
+                        <li>Click <strong>"Connect"</strong></li>
+                        <li>Wait for connection to establish</li>
+                        <li>Status will show "Connected" when successful</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">6</span> Verify Connection</h5>
+                    <div class="code-block">
+                        <code>
+# Check public IP via Terminal<br>
+curl ifconfig.me<br><br>
+# Test DNS resolution<br>
+nslookup google.com
+                        </code>
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Linux Instructions -->
+            <div id="ikev2-linux-instructions" class="os-instructions" style="display: none;">
+                <h4><i class="fab fa-linux"></i> Linux IKEv2 Setup</h4>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">1</span> Install strongSwan</h5>
+                    
+                    <div class="distro-tabs">
+                        <button class="tab-button active" onclick="showIKEv2LinuxDistro('ubuntu')">Ubuntu/Debian</button>
+                        <button class="tab-button" onclick="showIKEv2LinuxDistro('centos')">CentOS/RHEL</button>
+                        <button class="tab-button" onclick="showIKEv2LinuxDistro('arch')">Arch Linux</button>
+                        <button class="tab-button" onclick="showIKEv2LinuxDistro('fedora')">Fedora</button>
+                    </div>
+                    
+                    <div id="ikev2-ubuntu-install" class="distro-install active">
+                        <div class="code-block">
+                            <code>
+# Update package list<br>
+sudo apt update<br><br>
+# Install strongSwan and NetworkManager plugin<br>
+sudo apt install strongswan strongswan-swanctl<br>
+sudo apt install network-manager-strongswan<br><br>
+# For command-line only setup<br>
+sudo apt install strongswan-starter strongswan-charon
+                            </code>
+                            <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        </div>
+                    </div>
+                    
+                    <div id="ikev2-centos-install" class="distro-install">
+                        <div class="code-block">
+                            <code>
+# CentOS/RHEL 8+<br>
+sudo dnf install strongswan NetworkManager-strongswan<br><br>
+# CentOS/RHEL 7<br>
+sudo yum install epel-release<br>
+sudo yum install strongswan NetworkManager-strongswan
+                            </code>
+                            <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        </div>
+                    </div>
+                    
+                    <div id="ikev2-arch-install" class="distro-install">
+                        <div class="code-block">
+                            <code>
+# Install strongSwan<br>
+sudo pacman -S strongswan networkmanager-strongswan<br><br>
+# Enable and start strongSwan<br>
+sudo systemctl enable strongswan<br>
+sudo systemctl start strongswan
+                            </code>
+                            <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        </div>
+                    </div>
+                    
+                    <div id="ikev2-fedora-install" class="distro-install">
+                        <div class="code-block">
+                            <code>
+# Install strongSwan<br>
+sudo dnf install strongswan NetworkManager-strongswan<br><br>
+# Restart NetworkManager<br>
+sudo systemctl restart NetworkManager
+                            </code>
+                            <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">2</span> Configure via GUI</h5>
+                    <ol>
+                        <li>Open <strong>Settings</strong> → <strong>Network</strong></li>
+                        <li>Click <strong>"+"</strong> next to VPN</li>
+                        <li>Select <strong>"IPsec/IKEv2 (strongswan)"</strong></li>
+                        <li>Configure the connection:</li>
+                    </ol>
+                    
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>Gateway:</label>
+                            <span class="config-value" id="linux-server-ip">YOUR_SERVER_IP</span>
+                            <button class="copy-btn small" onclick="copyServerIP()">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Username:</label>
+                            <span class="config-value" id="linux-username">vpnuser</span>
+                            <button class="copy-btn small" onclick="copyText('linux-username')">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Password:</label>
+                            <span class="config-value" id="linux-password">vpnpass-change-this</span>
+                            <button class="copy-btn small" onclick="copyText('linux-password')">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">3</span> Command Line Configuration</h5>
+                    <div class="code-block">
+                        <code>
+# Create connection using NetworkManager CLI<br>
+nmcli connection add type vpn con-name "BartoloVPN-IKEv2" \\<br>
+  ifname -- vpn.service-type org.freedesktop.NetworkManager.strongswan \\<br>
+  vpn.data 'address=YOUR_SERVER_IP, encap=yes, ipcomp=no, method=eap, user=vpnuser'<br><br>
+# Set password (will prompt)<br>
+nmcli connection modify "BartoloVPN-IKEv2" vpn.secrets password=vpnpass-change-this<br><br>
+# Connect<br>
+nmcli connection up "BartoloVPN-IKEv2"
+                        </code>
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">4</span> Verify Connection</h5>
+                    <div class="code-block">
+                        <code>
+# Check public IP<br>
+curl ifconfig.me<br><br>
+# Check VPN status<br>
+nmcli connection show --active | grep vpn<br><br>
+# Test DNS<br>
+nslookup google.com<br><br>
+# Check routing<br>
+ip route show
+                        </code>
+                        <button class="copy-btn" onclick="copyToClipboard(this)">Copy</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Android Instructions -->
+            <div id="ikev2-android-instructions" class="os-instructions" style="display: none;">
+                <h4><i class="fab fa-android"></i> Android IKEv2 Setup</h4>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">1</span> Open VPN Settings</h5>
+                    <ol>
+                        <li>Open <strong>Settings</strong> app</li>
+                        <li>Navigate to <strong>Network & Internet</strong> → <strong>VPN</strong></li>
+                        <li>Tap <strong>"+"</strong> to add a new VPN</li>
+                    </ol>
+                    <p><small>Note: Steps may vary slightly depending on Android version and manufacturer</small></p>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">2</span> Configure IKEv2 VPN</h5>
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>Name:</label>
+                            <span class="config-value">BartoloVPN</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Type:</label>
+                            <span class="config-value">IKEv2/IPSec PSK or IKEv2/IPSec RSA</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Server address:</label>
+                            <span class="config-value" id="android-server-ip">YOUR_SERVER_IP</span>
+                            <button class="copy-btn small" onclick="copyServerIP()">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Username:</label>
+                            <span class="config-value" id="android-username">vpnuser</span>
+                            <button class="copy-btn small" onclick="copyText('android-username')">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Password:</label>
+                            <span class="config-value" id="android-password">vpnpass-change-this</span>
+                            <button class="copy-btn small" onclick="copyText('android-password')">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">3</span> Alternative: strongSwan App</h5>
+                    <p>For better compatibility, consider using the strongSwan VPN Client:</p>
+                    <a href="https://play.google.com/store/apps/details?id=org.strongswan.android" target="_blank" class="btn btn-primary">
+                        <i class="fab fa-google-play"></i> strongSwan VPN Client
+                    </a>
+                    
+                    <h6>strongSwan App Configuration:</h6>
+                    <ol>
+                        <li>Install and open strongSwan VPN Client</li>
+                        <li>Tap <strong>"Add VPN Profile"</strong></li>
+                        <li>Configure with the same details above</li>
+                        <li>Set Type to <strong>"IKEv2 EAP (Username/Password)"</strong></li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">4</span> Connect to VPN</h5>
+                    <ol>
+                        <li>Tap your VPN profile to select it</li>
+                        <li>Toggle the VPN connection on</li>
+                        <li>Accept VPN connection request</li>
+                        <li>VPN key icon will appear in status bar</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">5</span> Verify Connection</h5>
+                    <div class="verification-links">
+                        <a href="https://whatismyipaddress.com/" target="_blank" class="btn btn-outline">
+                            <i class="fas fa-globe"></i> Check Your IP
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- iOS Instructions -->
+            <div id="ikev2-ios-instructions" class="os-instructions" style="display: none;">
+                <h4><i class="fab fa-app-store-ios"></i> iOS IKEv2 Setup</h4>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">1</span> Open VPN Settings</h5>
+                    <ol>
+                        <li>Open <strong>Settings</strong> app</li>
+                        <li>Navigate to <strong>General</strong> → <strong>VPN</strong></li>
+                        <li>Tap <strong>"Add VPN Configuration..."</strong></li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">2</span> Configure IKEv2</h5>
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>Type:</label>
+                            <span class="config-value">IKEv2</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Description:</label>
+                            <span class="config-value">BartoloVPN</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Server:</label>
+                            <span class="config-value" id="ios-server-ip">YOUR_SERVER_IP</span>
+                            <button class="copy-btn small" onclick="copyServerIP()">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Remote ID:</label>
+                            <span class="config-value" id="ios-remote-id">YOUR_SERVER_IP</span>
+                            <button class="copy-btn small" onclick="copyServerIP()">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Local ID:</label>
+                            <span class="config-value">Leave blank</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">3</span> Authentication</h5>
+                    <div class="config-form">
+                        <div class="config-item">
+                            <label>User Authentication:</label>
+                            <span class="config-value">Username</span>
+                        </div>
+                        <div class="config-item">
+                            <label>Username:</label>
+                            <span class="config-value" id="ios-username">vpnuser</span>
+                            <button class="copy-btn small" onclick="copyText('ios-username')">Copy</button>
+                        </div>
+                        <div class="config-item">
+                            <label>Password:</label>
+                            <span class="config-value" id="ios-password">vpnpass-change-this</span>
+                            <button class="copy-btn small" onclick="copyText('ios-password')">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">4</span> Save Configuration</h5>
+                    <ol>
+                        <li>Tap <strong>"Done"</strong> to save the configuration</li>
+                        <li>The VPN profile will appear in your VPN settings</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">5</span> Connect to VPN</h5>
+                    <ol>
+                        <li>Toggle the VPN switch to <strong>ON</strong></li>
+                        <li>Enter your password if prompted</li>
+                        <li>Tap <strong>"OK"</strong> to allow VPN configuration</li>
+                        <li>VPN icon will appear in status bar when connected</li>
+                    </ol>
+                </div>
+                
+                <div class="instruction-step">
+                    <h5><span class="step-number">6</span> Verify Connection</h5>
+                    <div class="verification-links">
+                        <a href="https://whatismyipaddress.com/" target="_blank" class="btn btn-outline">
+                            <i class="fas fa-globe"></i> Check Your IP
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<!-- Add IKEv2 User Modal -->
+<div id="add-ikev2-user-modal" class="modal-overlay" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Add IKEv2 User</h3>
+            <button class="modal-close" onclick="closeAddIKEv2UserModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="add-ikev2-user-form">
+                <div class="form-group">
+                    <label for="ikev2-username">Username</label>
+                    <input type="text" id="ikev2-username" name="ikev2-username" required placeholder="Enter username">
+                    <small class="form-help">Must be 3-50 characters long, alphanumeric only</small>
+                </div>
+                <div class="form-group">
+                    <label for="ikev2-user-password">Password</label>
+                    <input type="password" id="ikev2-user-password" name="ikev2-user-password" required placeholder="Enter password">
+                    <small class="form-help">Minimum 8 characters, include numbers and special characters</small>
+                </div>
+                <div class="form-group">
+                    <label for="ikev2-confirm-password">Confirm Password</label>
+                    <input type="password" id="ikev2-confirm-password" name="ikev2-confirm-password" required placeholder="Confirm password">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddIKEv2UserModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

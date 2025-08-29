@@ -576,6 +576,31 @@ document.addEventListener('DOMContentLoaded', function() {
         addOpenVPNClientForm.addEventListener('submit', handleAddOpenVPNClient);
         console.log('Add OpenVPN client form listener added');
     }
+    
+    // Add IKEv2 user form listener
+    const addIKEv2UserForm = document.getElementById('add-ikev2-user-form');
+    if (addIKEv2UserForm) {
+        addIKEv2UserForm.addEventListener('submit', handleAddIKEv2User);
+        console.log('Add IKEv2 user form listener added');
+    }
+    
+    // Add mobile navigation event listeners
+    const mobileNavItems = document.querySelectorAll('.nav-item');
+    mobileNavItems.forEach(item => {
+        item.addEventListener('click', closeMobileMenu);
+    });
+    
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', handleOutsideClick);
+    
+    // Close mobile menu on escape key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeMobileMenu();
+        }
+    });
+    
+    console.log('Mobile navigation listeners added');
 });
 
 // WireGuard Modal Functions
@@ -1089,6 +1114,280 @@ function copyToClipboard(button) {
     }
 }
 
+// IKEv2 Functions
+
+function showAddIKEv2UserModal() {
+    const modal = document.getElementById('add-ikev2-user-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function closeAddIKEv2UserModal() {
+    const modal = document.getElementById('add-ikev2-user-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Reset form
+    const form = document.getElementById('add-ikev2-user-form');
+    if (form) {
+        form.reset();
+    }
+}
+
+async function handleAddIKEv2User(event) {
+    event.preventDefault();
+    
+    const username = document.getElementById('ikev2-username').value;
+    const password = document.getElementById('ikev2-user-password').value;
+    const confirmPassword = document.getElementById('ikev2-confirm-password').value;
+    
+    // Validate passwords match
+    if (password !== confirmPassword) {
+        showToast('Passwords do not match', 'error');
+        return;
+    }
+    
+    try {
+        const response = await apiFetch('/api/ikev2/users', {
+            method: 'POST',
+            body: JSON.stringify({ username, password })
+        });
+        
+        if (response.ok) {
+            showToast('IKEv2 user created successfully', 'success');
+            closeAddIKEv2UserModal();
+            loadIKEv2Users(); // Reload the users table
+        } else {
+            const error = await response.json();
+            showToast(error.detail || 'Failed to create user', 'error');
+        }
+    } catch (error) {
+        console.error('Error creating IKEv2 user:', error);
+        showToast('Failed to create user', 'error');
+    }
+}
+
+async function loadIKEv2Users() {
+    try {
+        const response = await apiFetch('/api/ikev2/users');
+        const users = await response.json();
+        
+        const tableBody = document.getElementById('ikev2-users-table');
+        if (tableBody) {
+            tableBody.innerHTML = users.map(user => `
+                <tr>
+                    <td>${user.username}</td>
+                    <td><span class="status ${user.status}">${user.status}</span></td>
+                    <td>${new Date(user.created).toLocaleDateString()}</td>
+                    <td>${user.lastConnection ? new Date(user.lastConnection).toLocaleDateString() : 'Never'}</td>
+                    <td>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteIKEv2User('${user.username}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading IKEv2 users:', error);
+        showToast('Failed to load users', 'error');
+    }
+}
+
+async function deleteIKEv2User(username) {
+    if (!confirm(`Are you sure you want to delete IKEv2 user "${username}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await apiFetch(`/api/ikev2/users/${username}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast('IKEv2 user deleted successfully', 'success');
+            loadIKEv2Users(); // Reload the users table
+        } else {
+            const error = await response.json();
+            showToast(error.detail || 'Failed to delete user', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting IKEv2 user:', error);
+        showToast('Failed to delete user', 'error');
+    }
+}
+
+function toggleIKEv2Instructions() {
+    const instructionsDiv = document.getElementById('ikev2-instructions');
+    const toggleButton = document.getElementById('ikev2-instructions-toggle');
+    
+    if (instructionsDiv.style.display === 'none') {
+        instructionsDiv.style.display = 'block';
+        toggleButton.textContent = 'Hide Instructions';
+    } else {
+        instructionsDiv.style.display = 'none';
+        toggleButton.textContent = 'Show Instructions';
+    }
+}
+
+function showIKEv2OSInstructions(osType) {
+    // Hide all OS instruction divs
+    const allInstructions = document.querySelectorAll('#ikev2-instructions .os-instructions');
+    allInstructions.forEach(div => {
+        div.style.display = 'none';
+    });
+    
+    // Remove active class from all OS buttons
+    const allButtons = document.querySelectorAll('#ikev2-instructions .os-btn');
+    allButtons.forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected OS instructions
+    const targetDiv = document.getElementById(`ikev2-${osType}-instructions`);
+    if (targetDiv) {
+        targetDiv.style.display = 'block';
+    }
+    
+    // Add active class to selected button
+    const targetButton = document.getElementById(`ikev2-os-${osType}`);
+    if (targetButton) {
+        targetButton.classList.add('active');
+    }
+    
+    // Update server IP in all instruction sections for the selected OS
+    updateIKEv2ServerIP();
+}
+
+function showIKEv2LinuxDistro(distro) {
+    // Hide all distro install sections
+    const allDistros = document.querySelectorAll('#ikev2-linux-instructions .distro-install');
+    allDistros.forEach(div => {
+        div.classList.remove('active');
+        div.style.display = 'none';
+    });
+    
+    // Remove active class from all tab buttons
+    const allTabs = document.querySelectorAll('#ikev2-linux-instructions .tab-button');
+    allTabs.forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected distro
+    const targetDiv = document.getElementById(`ikev2-${distro}-install`);
+    if (targetDiv) {
+        targetDiv.classList.add('active');
+        targetDiv.style.display = 'block';
+    }
+    
+    // Add active class to clicked button
+    event.target.classList.add('active');
+}
+
+function updateIKEv2ServerIP() {
+    // Get server IP (you would implement this based on your backend)
+    // For now, we'll use a placeholder
+    const serverIP = window.location.hostname; // or fetch from API
+    
+    // Update all server IP elements in IKEv2 instructions
+    const serverIPElements = document.querySelectorAll('[id*="server-ip"], [id*="remote-id"]');
+    serverIPElements.forEach(element => {
+        if (element.id.includes('ikev2') || element.closest('#ikev2-instructions')) {
+            element.textContent = serverIP;
+        }
+    });
+}
+
+function copyServerIP() {
+    const serverIP = window.location.hostname;
+    
+    const textarea = document.createElement('textarea');
+    textarea.value = serverIP;
+    document.body.appendChild(textarea);
+    textarea.select();
+    
+    try {
+        document.execCommand('copy');
+        showToast('Server IP copied to clipboard', 'success');
+    } catch (err) {
+        console.error('Failed to copy server IP: ', err);
+        showToast('Failed to copy server IP', 'error');
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
+function copyText(elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    const textarea = document.createElement('textarea');
+    textarea.value = element.textContent;
+    document.body.appendChild(textarea);
+    textarea.select();
+    
+    try {
+        document.execCommand('copy');
+        showToast('Text copied to clipboard', 'success');
+    } catch (err) {
+        console.error('Failed to copy text: ', err);
+        showToast('Failed to copy text', 'error');
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
+// Mobile Navigation Functions
+function toggleMobileMenu() {
+    console.log('toggleMobileMenu called'); // Debug log
+    const navMenu = document.getElementById('nav-menu');
+    const toggleIcon = document.getElementById('nav-toggle-icon');
+    
+    console.log('navMenu:', navMenu); // Debug log
+    console.log('toggleIcon:', toggleIcon); // Debug log
+    
+    if (navMenu && toggleIcon) {
+        navMenu.classList.toggle('active');
+        console.log('Menu classes after toggle:', navMenu.className); // Debug log
+        
+        // Change icon between hamburger and X
+        if (navMenu.classList.contains('active')) {
+            toggleIcon.className = 'fas fa-times';
+            console.log('Menu opened - icon changed to X'); // Debug log
+        } else {
+            toggleIcon.className = 'fas fa-bars';
+            console.log('Menu closed - icon changed to bars'); // Debug log
+        }
+    } else {
+        console.error('navMenu or toggleIcon not found'); // Debug log
+    }
+}
+
+// Close mobile menu when clicking nav items
+function closeMobileMenu() {
+    const navMenu = document.getElementById('nav-menu');
+    const toggleIcon = document.getElementById('nav-toggle-icon');
+    
+    if (navMenu && navMenu.classList.contains('active')) {
+        navMenu.classList.remove('active');
+        if (toggleIcon) {
+            toggleIcon.className = 'fas fa-bars';
+        }
+    }
+}
+
+// Close mobile menu when clicking outside
+function handleOutsideClick(event) {
+    const navbar = event.target.closest('.navbar');
+    const navMenu = document.getElementById('nav-menu');
+    
+    if (!navbar && navMenu && navMenu.classList.contains('active')) {
+        closeMobileMenu();
+    }
+}
+
 // Export functions for global access
 window.switchTab = switchTab;
 window.handleLogout = handleLogout;
@@ -1107,3 +1406,12 @@ window.deleteOpenVPNClient = deleteOpenVPNClient;
 window.toggleInstructions = toggleInstructions;
 window.showInstructionTab = showInstructionTab;
 window.copyToClipboard = copyToClipboard;
+window.showAddIKEv2UserModal = showAddIKEv2UserModal;
+window.closeAddIKEv2UserModal = closeAddIKEv2UserModal;
+window.toggleIKEv2Instructions = toggleIKEv2Instructions;
+window.showIKEv2OSInstructions = showIKEv2OSInstructions;
+window.showIKEv2LinuxDistro = showIKEv2LinuxDistro;
+window.copyServerIP = copyServerIP;
+window.copyText = copyText;
+window.toggleMobileMenu = toggleMobileMenu;
+window.closeMobileMenu = closeMobileMenu;

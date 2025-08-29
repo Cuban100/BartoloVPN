@@ -3,7 +3,30 @@
 **Multi-Protocol VPN Server with Web Management Interface**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![Do## 🔒 Security Features
+
+- **JWT Authentication** - Secure API access
+- **Password Hashing** - bcrypt for user passwords
+- **SSL/TLS** - Encrypted communications
+- **Network Isolation** - Docker network segmentation
+- **Privileged Containers** - Minimal required permissions
+- **Cloudflare Tunnel** - Zero-trust remote access
+
+## 📚 Documentation
+
+### Setup Guides
+- **[WireGuard Setup Guide](WIREGUARD_SETUP.md)** - Complete WireGuard configuration and client setup
+- **[OpenVPN Setup Guide](OPENVPN_SETUP.md)** - Complete OpenVPN configuration and client setup
+- **[IKEv2 Setup Guide](IKEV2_SETUP.md)** - Complete IKEv2/IPSec configuration and client setup
+- **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
+- **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
+
+### Quick Reference
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
+- **[Changelog](CHANGELOG.md)** - Project version history
+
+## 🔧 Developmentimg.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-red.svg)](https://fastapi.tiangolo.com/)
 
@@ -15,13 +38,15 @@ A comprehensive VPN server solution supporting **WireGuard**, **OpenVPN**, and *
 - **WireGuard** - Modern, fast, and secure VPN protocol
 - **OpenVPN** - Industry-standard VPN protocol with wide compatibility
 - **IKEv2** - Enterprise-grade VPN protocol for mobile devices
+- **Multi-protocol Support** - Run multiple VPN protocols simultaneously
 
 ### 🖥️ Web Management Interface
 - **Real-time Dashboard** - Monitor system status and VPN connections
-- **User Management** - Create, manage, and monitor VPN users
-- **Configuration Management** - Easy VPN client configuration generation
-- **System Monitoring** - CPU, memory, disk, and network usage
-- **Multi-user Support** - User registration and authentication system
+- **User Management** - Create, manage, and monitor VPN users with JWT authentication
+- **Configuration Management** - One-click VPN client configuration generation
+- **System Monitoring** - Real-time CPU, memory, disk, and network usage
+- **Multi-user Support** - Secure user registration and authentication system
+- **Mobile Support** - QR code generation for easy mobile client setup
 
 ### 🚀 Advanced Features
 - **Load Balancing** - HAProxy integration for high availability
@@ -29,6 +54,15 @@ A comprehensive VPN server solution supporting **WireGuard**, **OpenVPN**, and *
 - **Geo-spoofing** - Configure VPN to appear in different countries
 - **Cloudflare Tunnel** - Secure remote access without port forwarding
 - **Docker Networking** - Advanced container networking for scalability
+
+## 🆕 What's New
+
+### Latest Updates
+- **User Authentication** - Secure JWT-based authentication system
+- **FastAPI Backend** - Migrated from Flask for better performance
+- **Enhanced Security** - Improved password hashing and security practices
+- **Modern UI** - Responsive design with real-time updates
+- **Comprehensive Logging** - Detailed system and VPN logs
 
 ## 🏗️ Architecture
 
@@ -62,9 +96,15 @@ cd BartoloVPN
 ### 2. Configure Environment
 ```bash
 # Copy and edit the environment file
-cp .env.example .env
+cp env.example .env
 nano .env
 ```
+
+Make sure to set strong credentials for:
+- `WEB_USERNAME`
+- `WEB_PASSWORD`
+- `JWT_SECRET_KEY`
+- `IKEV2_PSK`
 
 ### 3. Start the Services
 ```bash
@@ -109,18 +149,23 @@ JWT_SECRET_KEY=your-super-secret-jwt-key
 3. Download QR code or configuration file
 4. Import into WireGuard client
 
+**📖 Detailed Setup Guide**: [WireGuard Setup Instructions](WIREGUARD_SETUP.md)
+
 #### OpenVPN
 1. Access web interface → OpenVPN tab
 2. Click "Add Client" to generate configuration
 3. Download .ovpn file
 4. Import into OpenVPN client
 
+**📖 Detailed Setup Guide**: [OpenVPN Setup Instructions](OPENVPN_SETUP.md)
+
 #### IKEv2
 1. Access web interface → IKEv2 tab
-2. Use provided credentials:
-   - Username: vpnuser
-   - Password: vpnpass
-   - PSK: (from environment)
+2. Create user credentials with username/password
+3. Configure client with server IP and credentials
+4. Connect using native VPN clients
+
+**📖 Detailed Setup Guide**: [IKEv2 Setup Instructions](IKEV2_SETUP.md)
 
 ## 🔧 Advanced Features
 
@@ -152,10 +197,11 @@ JWT_SECRET_KEY=your-super-secret-jwt-key
 ## 📊 Monitoring
 
 ### System Status
-- Real-time CPU, memory, and disk usage
-- VPN connection statistics
-- Network bandwidth monitoring
-- Service health checks
+- **Real-time Metrics**: CPU, memory, and disk usage
+- **VPN Statistics**: Active connections and bandwidth usage
+- **Network Monitoring**: Real-time traffic analysis
+- **Service Health**: Automatic status checks and alerts
+- **Audit Logs**: Detailed access and configuration logs
 
 ### Logs
 ```bash
@@ -169,7 +215,20 @@ docker-compose logs openvpn
 docker-compose logs ikev2
 ```
 
-## 🔒 Security Features
+## � Documentation
+
+### Setup Guides
+- **[OpenVPN Setup Guide](OPENVPN_SETUP.md)** - Complete OpenVPN configuration and client setup
+- **[IKEv2 Setup Guide](IKEV2_SETUP.md)** - Complete IKEv2/IPSec configuration and client setup
+- **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
+- **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
+
+### Quick Reference
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
+- **[Changelog](CHANGELOG.md)** - Project version history
+
+## 🔧 Development
 
 - **JWT Authentication** - Secure API access
 - **Password Hashing** - bcrypt for user passwords
