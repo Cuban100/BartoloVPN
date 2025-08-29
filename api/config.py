@@ -6,89 +6,89 @@ Loads all settings from environment variables
 
 import os
 from typing import List, Optional
-from pydantic import Field, validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Server Configuration
-    server_ip: str = Field(..., env="SERVER_IP")
-    domain: Optional[str] = Field("", env="DOMAIN")
+    server_ip: str = Field(...)
+    domain: Optional[str] = Field(default=None)
     
     # Web Interface
 
-    web_username: str = Field("admin", env="WEB_USERNAME")
-    web_password: str = Field(..., env="WEB_PASSWORD")
+    web_username: str = Field(...)
+    web_password: str = Field(...)
     
     # WireGuard Configuration
-    wireguard_enabled: bool = Field(True, env="WIREGUARD_ENABLED")
-    wireguard_port: int = Field(51820, env="WIREGUARD_PORT")
-    wireguard_peers: int = Field(10, env="WIREGUARD_PEERS")
-    wireguard_dns: str = Field("1.1.1.1,8.8.8.8", env="WIREGUARD_DNS")
-    wireguard_subnet: str = Field("10.13.13.0", env="WIREGUARD_SUBNET")
-    wireguard_allowed_ips: str = Field("0.0.0.0/0", env="WIREGUARD_ALLOWED_IPS")
+    wireguard_enabled: bool = Field(...)
+    wireguard_port: int = Field(...)
+    wireguard_peers: int = Field(...)
+    wireguard_dns: str = Field(...)
+    wireguard_subnet: str = Field(...)
+    wireguard_allowed_ips: str = Field(...)
     
     # OpenVPN Configuration
-    openvpn_enabled: bool = Field(True, env="OPENVPN_ENABLED")
-    openvpn_port: int = Field(1194, env="OPENVPN_PORT")
-    openvpn_protocol: str = Field("udp", env="OPENVPN_PROTOCOL")
-    openvpn_cipher: str = Field("AES-256-GCM", env="OPENVPN_CIPHER")
-    openvpn_auth: str = Field("SHA256", env="OPENVPN_AUTH")
+    openvpn_enabled: bool = Field(...)
+    openvpn_port: int = Field(...)
+    openvpn_protocol: str = Field(...)
+    openvpn_cipher: str = Field(...)
+    openvpn_auth: str = Field(...)
     
     # IKEv2 Configuration
-    ikev2_enabled: bool = Field(True, env="IKEV2_ENABLED")
-    ikev2_psk: str = Field(..., env="IKEV2_PSK")
+    ikev2_enabled: bool = Field(...)
+    ikev2_psk: str = Field(...)
 
     
     # Security Settings
-    encryption_level: int = Field(256, env="ENCRYPTION_LEVEL")
-    dns_servers: str = Field("1.1.1.1,8.8.8.8", env="DNS_SERVERS")
-    kill_switch_enabled: bool = Field(True, env="KILL_SWITCH_ENABLED")
+    encryption_level: int = Field(...)
+    dns_servers: str = Field(...)
+    kill_switch_enabled: bool = Field(...)
     
     # Logging
-    log_level: str = Field("INFO", env="LOG_LEVEL")
-    log_retention_days: int = Field(30, env="LOG_RETENTION_DAYS")
+    log_level: str = Field(...)
+    log_retention_days: int = Field(...)
     
     # Monitoring
-    monitoring_enabled: bool = Field(True, env="MONITORING_ENABLED")
-    bandwidth_limit_mb: int = Field(1000, env="BANDWIDTH_LIMIT_MB")
+    monitoring_enabled: bool = Field(...)
+    bandwidth_limit_mb: int = Field(...)
     
     # JWT Configuration
-    jwt_secret_key: str = Field(..., env="JWT_SECRET_KEY")
-    jwt_algorithm: str = Field("HS256", env="JWT_ALGORITHM")
-    jwt_expire_minutes: int = Field(60, env="JWT_EXPIRE_MINUTES")  # 1 hour
+    jwt_secret_key: str = Field(...)
+    jwt_algorithm: str = Field(...)
+    jwt_expire_minutes: int = Field(...)
     
     # Local Network Configuration
-    local_ip: str = Field("", env="LOCAL_IP")
-    local_ipv6: str = Field("", env="LOCAL_IPV6")
+    local_ip: str = Field(...)
+    local_ipv6: str = Field(...)
     
     # Previous IPs for rotation
-    previous_ips: str = Field("", env="PREVIOUS_IPS")
+    previous_ips: str = Field(...)
     
     # Database Configuration
-    database_url: str = Field("sqlite+aiosqlite:///./bartolovpn.db", env="DATABASE_URL")
+    database_url: str = Field(...)
     
     # Configuration paths
-    wireguard_config_path: str = Field("/config/wireguard", env="WIREGUARD_CONFIG_PATH")
-    openvpn_config_path: str = Field("/config/openvpn", env="OPENVPN_CONFIG_PATH")
-    ikev2_config_path: str = Field("/config/ikev2", env="IKEV2_CONFIG_PATH")
+    wireguard_config_path: str = Field(...)
+    openvpn_config_path: str = Field(...)
+    ikev2_config_path: str = Field(...)
     
-    @validator('wireguard_dns', 'dns_servers', 'previous_ips')
+    @field_validator('wireguard_dns', 'dns_servers', 'previous_ips')
     def parse_comma_separated(cls, v):
         """Parse comma-separated strings into lists"""
         if isinstance(v, str):
             return [ip.strip() for ip in v.split(',') if ip.strip()]
         return v
     
-    @validator('encryption_level')
+    @field_validator('encryption_level')
     def validate_encryption_level(cls, v):
         """Validate encryption level"""
         if v not in [128, 256]:
             raise ValueError("Encryption level must be 128 or 256")
         return v
     
-    @validator('openvpn_protocol')
+    @field_validator('openvpn_protocol')
     def validate_openvpn_protocol(cls, v):
         """Validate OpenVPN protocol"""
         if v not in ['udp', 'tcp']:
@@ -135,13 +135,15 @@ class Settings(BaseSettings):
             protocols.append("ikev2")
         return protocols
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 # Global settings instance
-settings = Settings()
+settings = Settings()  # Loads all required fields from environment variables
 
 # Export commonly used settings for convenience
 SERVER_IP = settings.server_ip

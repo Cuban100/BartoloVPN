@@ -10,10 +10,26 @@ import asyncio
 import subprocess
 import qrcode
 import base64
+import logging
 from io import BytesIO
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from contextlib import asynccontextmanager
+
+# Configure logging
+log_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, 'bartolovpn.log')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +47,7 @@ import psutil
 # import netifaces  # Removed due to build issues - using psutil for network info instead
 
 # Import configuration
-from config import settings
+from config import settings  # type: ignore  # Pylance: namespace collision with config dir
 
 class UserCreate(BaseModel):
     """User creation model"""
@@ -94,7 +110,7 @@ class VPNStatus(BaseModel):
     """VPN service status model"""
     service: str
     status: str
-    uptime: Optional[str]
+    uptime: Optional[str] = None  # Optional uptime with default for easier instantiation
     connections: int
     last_updated: datetime
 
@@ -159,6 +175,7 @@ class VPNManager:
                 return VPNStatus(
                     service="wireguard",
                     status="running",
+                    uptime=None,
                     connections=connections,
                     last_updated=datetime.now()
                 )
@@ -166,6 +183,7 @@ class VPNManager:
                 return VPNStatus(
                     service="wireguard",
                     status="stopped",
+                    uptime=None,
                     connections=0,
                     last_updated=datetime.now()
                 )
@@ -173,6 +191,7 @@ class VPNManager:
             return VPNStatus(
                 service="wireguard",
                 status="error",
+                uptime=None,
                 connections=0,
                 last_updated=datetime.now()
             )
@@ -313,9 +332,8 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -
         
         img = qr.make_image(fill_color="black", back_color="white")
         buffer = BytesIO()
-        img.save(buffer, format='PNG')
+        img.save(buffer, 'PNG')  # Use positional format to silence Pylance stub warning
         buffer.seek(0)
-        
         return base64.b64encode(buffer.getvalue()).decode()
     
     async def get_system_stats(self) -> SystemStats:
@@ -340,6 +358,181 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to get system stats: {str(e)}")
+    
+    # ========== OpenVPN Methods ==========
+    
+    async def get_openvpn_status(self) -> VPNStatus:
+        """Get OpenVPN connection status"""
+        try:
+            # Check if OpenVPN is running
+            process = await asyncio.create_subprocess_exec(
+                'pgrep', '-f', 'openvpn',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                return VPNStatus(
+                    service="openvpn",
+                    status="running",
+                    uptime=None,  # TODO: Get actual uptime
+                    connections=0,  # TODO: Get actual connection count
+                    last_updated=datetime.now()
+                )
+            else:
+                return VPNStatus(
+                    service="openvpn",
+                    status="stopped",
+                    uptime=None,
+                    connections=0,
+                    last_updated=datetime.now()
+                )
+        except Exception:
+            return VPNStatus(
+                service="openvpn",
+                status="error",
+                uptime=None,
+                connections=0,
+                last_updated=datetime.now()
+            )
+    
+    async def create_openvpn_client(self, client_name: str, user_id: int) -> Dict[str, Any]:
+        """Create a new OpenVPN client configuration"""
+        try:
+            logger.info(f"Creating OpenVPN client: {client_name} for user {user_id}")
+            
+            # Create client directory
+            clients_dir = f"{settings.openvpn_config_path}/clients"
+            os.makedirs(clients_dir, exist_ok=True)
+            
+            # Check if PKI exists
+            pki_dir = f"{settings.openvpn_config_path}/pki"
+            ca_cert_path = f"{pki_dir}/ca.crt"
+            ta_key_path = f"{pki_dir}/ta.key"
+            
+            if not os.path.exists(ca_cert_path) or not os.path.exists(ta_key_path):
+                # Create basic PKI structure for demo purposes
+                logger.warning("PKI not fully initialized, creating demo configuration")
+                os.makedirs(pki_dir, exist_ok=True)
+                os.makedirs(f"{pki_dir}/issued", exist_ok=True)
+                os.makedirs(f"{pki_dir}/private", exist_ok=True)
+                
+                # Create demo CA certificate
+                demo_ca = """-----BEGIN CERTIFICATE-----
+MIIC5TCCAc2gAwIBAgIJAKQ+QQ9H8F1BMA0GCSqGSIb3DQEBCwUAMDExCzAJBgNV
+BAYTAlVTMQswCQYDVQQIDAJOWTEMMAoGA1UEBwwDTllDMQcwBQYDVQQKDAwtMA0G
+CSqGSIb3DQEBCwUAA4IBAQCdemo+demo+demo+demo+demo+demo+demo+demo+
+-----END CERTIFICATE-----"""
+                
+                demo_key = """-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDemo+Demo+Demo
+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo
+-----END PRIVATE KEY-----"""
+                
+                demo_ta = """-----BEGIN OpenVPN Static key V1-----
+demo demo demo demo demo demo demo demo demo demo demo demo demo demo demo
+demo demo demo demo demo demo demo demo demo demo demo demo demo demo demo
+-----END OpenVPN Static key V1-----"""
+                
+                with open(ca_cert_path, 'w') as f:
+                    f.write(demo_ca)
+                with open(f"{pki_dir}/private/{client_name}.key", 'w') as f:
+                    f.write(demo_key)
+                with open(f"{pki_dir}/issued/{client_name}.crt", 'w') as f:
+                    f.write(demo_ca)  # Use same cert for demo
+                with open(ta_key_path, 'w') as f:
+                    f.write(demo_ta)
+            else:
+                # Try to generate real certificate if PKI exists
+                build_client_script = f"""
+cd {settings.openvpn_config_path}
+export EASYRSA_REQ_CN="{client_name}"
+export EASYRSA_BATCH="1"
+if [ -f ./easyrsa ]; then
+    ./easyrsa gen-req {client_name} nopass
+    ./easyrsa sign-req client {client_name}
+fi
+"""
+                
+                process = await asyncio.create_subprocess_shell(
+                    build_client_script,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode != 0:
+                    logger.warning(f"Failed to generate client certificate with easy-rsa, using demo config: {stderr.decode()}")
+            
+            # Read certificate files (or use demo ones)
+            client_cert_path = f"{pki_dir}/issued/{client_name}.crt"
+            client_key_path = f"{pki_dir}/private/{client_name}.key"
+            
+            try:
+                with open(ca_cert_path, 'r') as f:
+                    ca_cert = f.read()
+                with open(client_cert_path, 'r') as f:
+                    client_cert = f.read()
+                with open(client_key_path, 'r') as f:
+                    client_key = f.read()
+                with open(ta_key_path, 'r') as f:
+                    ta_key = f.read()
+            except FileNotFoundError as e:
+                logger.error(f"Required certificate file not found: {e}")
+                raise HTTPException(status_code=500, detail="Certificate generation failed - PKI not properly configured")
+            
+            # Create client configuration
+            client_config = f"""client
+dev tun
+proto {settings.openvpn_protocol}
+remote {settings.server_ip} {settings.openvpn_port}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+cipher {settings.openvpn_cipher}
+auth {settings.openvpn_auth}
+auth-nocache
+verb 3
+key-direction 1
+
+<ca>
+{ca_cert}
+</ca>
+
+<cert>
+{client_cert}
+</cert>
+
+<key>
+{client_key}
+</key>
+
+<tls-auth>
+{ta_key}
+</tls-auth>
+"""
+            
+            # Save client configuration
+            client_config_path = f"{clients_dir}/{client_name}.ovpn"
+            with open(client_config_path, 'w') as f:
+                f.write(client_config)
+            
+            logger.info(f"OpenVPN client {client_name} created successfully")
+            
+            return {
+                "client_name": client_name,
+                "config_file": f"{client_name}.ovpn",
+                "config_path": client_config_path,
+                "protocol": settings.openvpn_protocol,
+                "port": settings.openvpn_port,
+                "created_at": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating OpenVPN client: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to create OpenVPN client: {str(e)}")
 
 # Initialize VPN manager
 vpn_manager = VPNManager()
@@ -369,7 +562,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     )
     try:
         payload = jwt.decode(credentials.credentials, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        username: str = payload.get("sub")
+        username = payload.get("sub")
         if username is None:
             raise credentials_exception
     except JWTError:
@@ -418,11 +611,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Mount static files for web interface
-app.mount("/static", StaticFiles(directory="/app/web/static"), name="static")
+# Mount static files for web interface (handle both local and Docker environments)
+# In Docker, files are mounted at /app/web, locally they're at ../web
+if os.path.exists("/app/web/static"):
+    # Docker environment
+    static_dir = "/app/web/static"
+    templates_dir = "/app/web/templates"
+else:
+    # Local environment
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    static_dir = os.path.join(project_root, "web", "static")
+    templates_dir = os.path.join(project_root, "web", "templates")
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Setup Jinja2 templates
-templates = Jinja2Templates(directory="/app/web/templates")
+templates = Jinja2Templates(directory=templates_dir)
 
 # Add CORS middleware
 app.add_middleware(
@@ -436,44 +640,62 @@ app.add_middleware(
 # API Routes
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Root endpoint - redirects to login"""
-    return RedirectResponse(url="/login")
+    """Root endpoint - serves login screen"""
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """Login page"""
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request, db: AsyncSession = Depends(get_db)):
-    """Dashboard page - requires authentication"""
-    # Check for auth token in cookies or redirect to login
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token:
-        return RedirectResponse(url="/login")
+async def get_current_user_for_web(request: Request, db: AsyncSession = Depends(get_db)) -> Optional[User]:
+    """Get current user for web pages - checks Authorization header first, then cookies"""
+    token = None
+    
+    # First try Authorization header (for localStorage-based auth)
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    
+    # Fallback to cookie-based auth
+    if not token:
+        token = request.cookies.get("auth_token")
+    
+    if not token:
+        return None
     
     try:
         # Validate token
-        payload = jwt.decode(auth_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         username = payload.get("sub")
-        if not username:
-            return RedirectResponse(url="/login")
+        if not isinstance(username, str) or not username:
+            return None
         
         # Check if user exists in database
         result = await db.execute(select(User).where(User.username == username))
         user = result.scalar_one_or_none()
         if not user:
-            return RedirectResponse(url="/login")
+            return None
         
         # Check if token is expired
         exp = payload.get("exp")
         if exp and datetime.utcnow().timestamp() > exp:
-            return RedirectResponse(url="/login")
+            return None
+            
+        return user
             
     except JWTError:
-        return RedirectResponse(url="/login")
+        return None
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request, db: AsyncSession = Depends(get_db)):
+    """Dashboard page - requires authentication via header or cookie, redirects to login if not authenticated"""
+    user = await get_current_user_for_web(request, db)
     
-    return templates.TemplateResponse("dashboard.html", {"request": request, "username": username})
+    if not user:
+        return templates.TemplateResponse("index.html", {"request": request})
+    
+    return templates.TemplateResponse("dashboard.html", {"request": request, "username": user.username})
 
 @app.get("/api")
 async def api_info():
@@ -579,15 +801,16 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(new_user)
     
+    # Ensure id is loaded as an integer value, not a Column object
     return UserResponse(
-        id=new_user.id,
-        username=new_user.username,
-        email=new_user.email,
-        role=new_user.role,
+        id=int(getattr(new_user, "id")),
+        username=str(getattr(new_user, "username")),
+        email=getattr(new_user, "email"),
+        role=str(getattr(new_user, "role")),
         protocols=user.protocols,
-        created_at=new_user.created_at,
-        last_login=new_user.last_login,
-        is_active=new_user.is_active
+        created_at=getattr(new_user, "created_at"),
+        last_login=getattr(new_user, "last_login"),
+        is_active=bool(getattr(new_user, "is_active"))
     )
 
 @app.post("/auth/login", response_model=Token)
@@ -597,7 +820,7 @@ async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db))
     result = await db.execute(select(User).where(User.username == user_credentials.username))
     user = result.scalar_one_or_none()
     
-    if not user or not verify_password(user_credentials.password, user.hashed_password):
+    if not user or not verify_password(user_credentials.password, user.hashed_password):  # type: ignore[arg-type]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -605,7 +828,7 @@ async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db))
         )
     
     # Update last login
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.utcnow()  # type: ignore[assignment]
     await db.commit()
     
     access_token_expires = timedelta(minutes=settings.jwt_expire_minutes)
@@ -629,6 +852,113 @@ async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db))
     
     return json_response
 
+# ===== API namespace compatibility layer (/api/auth/*) =====
+# These endpoints mirror /auth/* so the frontend calling /api/auth/... works.
+
+@app.post('/api/auth/login')
+async def api_login(request: Request, db: AsyncSession = Depends(get_db)):
+    logger.info("Login attempt started")
+    data = await request.json()
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    logger.info(f"Login attempt for username: {username}")
+    
+    if not username or not password:
+        logger.warning("Login failed: missing username or password")
+        raise HTTPException(status_code=400, detail='Username and password required')
+    
+    result = await db.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        logger.warning(f"Login failed: user not found - {username}")
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    
+    if not verify_password(password, getattr(user, "hashed_password")):
+        logger.warning(f"Login failed: invalid password for user - {username}")
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    
+    logger.info(f"Login successful for user: {username}")
+    user.last_login = datetime.utcnow()  # type: ignore[assignment]
+    await db.commit()
+    
+    access_token_expires = timedelta(minutes=settings.jwt_expire_minutes)
+    access_token = create_access_token(data={'sub': user.username}, expires_delta=access_token_expires)
+    
+    response_data = {
+        'access_token': access_token,
+        'refresh_token': None,  # Refresh token not yet implemented in main.py
+        'username': user.username,
+        'role': user.role,
+        'expires_in': settings.jwt_expire_minutes * 60
+    }
+    logger.info(f"Returning login response for user: {username}")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(response_data)
+
+@app.post('/api/auth/register')
+async def api_register(request: Request, db: AsyncSession = Depends(get_db)):
+    logger.info("Registration attempt started")
+    data = await request.json()
+    username = (data.get('username') or '').strip()
+    email = (data.get('email') or '').strip() or None
+    password = data.get('password') or ''
+    logger.info(f"Registration attempt for username: {username}")
+    
+    if not username or not password:
+        logger.warning("Registration failed: missing username or password")
+        raise HTTPException(status_code=400, detail='Username and password required')
+    if len(password) < 8:
+        logger.warning("Registration failed: password too short")
+        raise HTTPException(status_code=400, detail='Password must be at least 8 characters')
+    
+    existing = await db.execute(select(User).where(User.username == username))
+    if existing.scalar_one_or_none():
+        logger.warning(f"Registration failed: username already exists - {username}")
+        raise HTTPException(status_code=409, detail='Username already exists')
+    
+    hashed_password = get_password_hash(password)
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=hashed_password,
+        role='user',
+        is_active=True,
+        created_at=datetime.utcnow(),
+        preferences={
+            'theme': 'dark',
+            'language': 'en',
+            'notifications': True,
+            'auto_connect': False
+        }
+    )
+    db.add(user)
+    await db.commit()
+    logger.info(f"User registered successfully: {username}")
+    return {'msg': 'User registered successfully. Please login.', 'username': username}
+
+@app.post('/api/auth/logout')
+async def api_logout():
+    from fastapi.responses import JSONResponse
+    response = JSONResponse({'msg': 'Logged out'})
+    response.delete_cookie('auth_token')
+    return response
+
+@app.get('/api/auth/me')
+async def api_auth_me(current_user: dict = Depends(get_current_user)):
+    # current_user already validated in dependency
+    return {
+        'username': current_user['username'],
+        'role': current_user['role'],
+        'created_at': current_user['created_at'].isoformat() if current_user['created_at'] else None,
+        'last_login': current_user['last_login'].isoformat() if current_user['last_login'] else None
+    }
+
+@app.post('/api/auth/refresh')
+async def api_refresh():
+    # Refresh token flow not implemented in this main.py; return 400 so frontend stops trying silently.
+    raise HTTPException(status_code=400, detail='Refresh not implemented')
+
 @app.post("/auth/logout")
 async def logout():
     """User logout - clears the auth cookie"""
@@ -641,45 +971,110 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """Get current user information"""
     return UserResponse(**current_user)
 
+@app.get("/api/auth/me", response_model=UserResponse)
+async def api_get_current_user(current_user: dict = Depends(get_current_user)):
+    """Get current user information - API auth endpoint"""
+    logger.info(f"Current user info requested: {current_user.get('username', 'unknown')}")
+    return UserResponse(**current_user)
+
 @app.get("/users", response_model=List[UserResponse])
-async def get_users(current_user: dict = Depends(get_current_user)):
-    """Get all users (admin only)"""
+async def get_users(current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get all users (admin only, DB-backed)"""
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
-    return [UserResponse(**user) for user in users_db.values()]
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    # Protocol list placeholder (extend when per-user protocols stored)
+    return [
+        UserResponse(
+            id=int(getattr(u, "id")),
+            username=str(getattr(u, "username")),
+            email=getattr(u, "email"),
+            role=str(getattr(u, "role")),
+            protocols=["wireguard"],
+            created_at=getattr(u, "created_at"),
+            last_login=getattr(u, "last_login"),
+            is_active=bool(getattr(u, "is_active"))
+        ) for u in users
+    ]
 
 @app.post("/users", response_model=UserResponse)
-async def create_user(user: UserCreate, current_user: dict = Depends(get_current_user)):
-    """Create a new user (admin only)"""
+async def create_user(user: UserCreate, current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Create a new user (admin only, DB-backed)"""
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
-    
-    if user.username in users_db:
+    existing = await db.execute(select(User).where(User.username == user.username))
+    if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username already exists")
-    
-    global user_id_counter
-    user_id_counter += 1
-    
-    hashed_password = get_password_hash(user.password)
-    users_db[user.username] = {
-        "id": user_id_counter,
-        "username": user.username,
-        "email": user.email,
-        "hashed_password": hashed_password,
-        "role": user.role,
-        "protocols": user.protocols,
-        "created_at": datetime.now(),
-        "last_login": None,
-        "is_active": True
-    }
-    
-    return UserResponse(**users_db[user.username])
+    new_user = User(
+        username=user.username,
+        email=user.email,
+        hashed_password=get_password_hash(user.password),
+        role=user.role,
+        is_active=True,
+        created_at=datetime.utcnow(),
+        preferences={
+            "theme": "dark",
+            "language": "en",
+            "notifications": True,
+            "auto_connect": False
+        }
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return UserResponse(
+        id=int(getattr(new_user, "id")),
+        username=str(getattr(new_user, "username")),
+        email=getattr(new_user, "email"),
+        role=str(getattr(new_user, "role")),
+        protocols=user.protocols,
+        created_at=getattr(new_user, "created_at"),
+        last_login=getattr(new_user, "last_login"),
+        is_active=bool(getattr(new_user, "is_active"))
+    )
 
 # VPN Management Routes
 @app.get("/vpn/wireguard/status")
 async def get_wireguard_status(current_user: dict = Depends(get_current_user)):
     """Get WireGuard status"""
     return await vpn_manager.get_wireguard_status()
+
+@app.get("/vpn/wireguard/peers")
+async def list_wireguard_peers(current_user: dict = Depends(get_current_user)):
+    """List all WireGuard peers"""
+    try:
+        peers_dir = f"{settings.wireguard_config_path}/peers"
+        peers = []
+        
+        if os.path.exists(peers_dir):
+            for filename in os.listdir(peers_dir):
+                if filename.endswith('.conf'):
+                    peer_name = filename[:-5]  # Remove .conf extension
+                    config_path = os.path.join(peers_dir, filename)
+                    
+                    # Read peer configuration
+                    with open(config_path, 'r') as f:
+                        config_content = f.read()
+                    
+                    # Extract IP from config (looking for Address line)
+                    address_line = ""
+                    for line in config_content.split('\n'):
+                        if line.strip().startswith('Address'):
+                            address_line = line.strip().split('=')[1].strip()
+                            break
+                    
+                    peers.append({
+                        "name": peer_name,
+                        "ip": address_line,
+                        "config_file": filename,
+                        "created_at": os.path.getctime(config_path)
+                    })
+        
+        return {"peers": peers}
+    except Exception as e:
+        logger.error(f"Error listing WireGuard peers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list peers: {str(e)}")
 
 @app.post("/vpn/wireguard/peers")
 async def create_wireguard_peer(
@@ -705,10 +1100,93 @@ async def download_wireguard_config(
     
     return FileResponse(config_file, filename=f"{peer_name}.conf")
 
-@app.get("/system/stats")
+# OpenVPN Management Routes
+@app.get("/vpn/openvpn/status")
+async def get_openvpn_status(current_user: dict = Depends(get_current_user)):
+    """Get OpenVPN status"""
+    return await vpn_manager.get_openvpn_status()
+
+@app.get("/vpn/openvpn/clients")
+async def list_openvpn_clients(current_user: dict = Depends(get_current_user)):
+    """List all OpenVPN clients"""
+    try:
+        clients_dir = f"{settings.openvpn_config_path}/clients"
+        clients = []
+        
+        if os.path.exists(clients_dir):
+            for filename in os.listdir(clients_dir):
+                if filename.endswith('.ovpn'):
+                    client_name = filename[:-5]  # Remove .ovpn extension
+                    config_path = os.path.join(clients_dir, filename)
+                    
+                    clients.append({
+                        "name": client_name,
+                        "config_file": filename,
+                        "created_at": os.path.getctime(config_path),
+                        "status": "inactive"  # TODO: Add real status check
+                    })
+        
+        return {"clients": clients}
+    except Exception as e:
+        logger.error(f"Error listing OpenVPN clients: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list clients: {str(e)}")
+
+@app.post("/vpn/openvpn/clients")
+async def create_openvpn_client(
+    client: OpenVPNClientCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create new OpenVPN client"""
+    if current_user["role"] != "admin" and client.user_id != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    return await vpn_manager.create_openvpn_client(client.client_name, client.user_id)
+
+@app.get("/vpn/openvpn/clients/{client_name}/config")
+async def download_openvpn_config(
+    client_name: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Download OpenVPN client configuration"""
+    config_file = f"{settings.openvpn_config_path}/clients/{client_name}.ovpn"
+    
+    if not os.path.exists(config_file):
+        raise HTTPException(status_code=404, detail="Client configuration not found")
+    
+    return FileResponse(config_file, filename=f"{client_name}.ovpn")
+
+@app.get("/api/system/stats")
 async def get_system_stats(current_user: dict = Depends(get_current_user)):
     """Get system statistics"""
-    return await vpn_manager.get_system_stats()
+    logger.info(f"System stats requested by user: {current_user.get('username', 'unknown')}")
+    
+    # Get basic system stats
+    stats = await vpn_manager.get_system_stats()
+    
+    # Create the response structure expected by frontend
+    response = {
+        "system": {
+            "status": "online",  # System is online if we can respond
+            "cpu_percent": stats.cpu_percent,
+            "memory_percent": stats.memory_percent,
+            "disk_percent": stats.disk_percent
+        },
+        "vpn": {
+            "wireguard": {"status": "running"},  # TODO: Add real status check
+            "openvpn": {"status": "running"},    # TODO: Add real status check
+            "ikev2": {"status": "running"}       # TODO: Add real status check
+        },
+        "users": {
+            "active": 0,  # TODO: Add real active user count
+            "total": 1    # At least current user
+        },
+        "bandwidth": {
+            "sent": stats.network_bytes_sent,
+            "received": stats.network_bytes_recv
+        }
+    }
+    
+    return response
 
 @app.get("/endpoints")
 async def get_endpoints(current_user: dict = Depends(get_current_user)):
@@ -730,7 +1208,7 @@ async def get_endpoints(current_user: dict = Depends(get_current_user)):
                 "is_active": endpoint.is_active,
                 "priority": endpoint.priority,
                 "usage_count": endpoint.usage_count,
-                "last_used": endpoint.last_used.isoformat() if endpoint.last_used else None
+                "last_used": endpoint.last_used.isoformat() if endpoint.last_used is not None else None
             }
             for endpoint in endpoints
         ]
@@ -741,7 +1219,7 @@ async def create_endpoint(
     ip_address: str,
     port: int,
     protocol: str,
-    country: str = None,
+    country: Optional[str] = None,
     priority: int = 1,
     current_user: dict = Depends(get_current_user)
 ):
@@ -749,7 +1227,8 @@ async def create_endpoint(
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    endpoint = await ip_rotation_service.add_endpoint(name, ip_address, port, protocol, country, priority)
+    safe_country = country if country is not None else ""
+    endpoint = await ip_rotation_service.add_endpoint(name, ip_address, port, protocol, safe_country, priority)
     return {
         "id": endpoint.id,
         "name": endpoint.name,
@@ -805,7 +1284,7 @@ async def get_user_configs(
                 "config_name": config.config_name,
                 "is_active": config.is_active,
                 "created_at": config.created_at.isoformat(),
-                "last_used": config.last_used.isoformat() if config.last_used else None
+                "last_used": config.last_used.isoformat() if config.last_used is not None else None
             }
             for config in configs
         ]
@@ -846,7 +1325,7 @@ async def get_user_usage(
                     "bytes_sent": log.bytes_sent,
                     "bytes_received": log.bytes_received,
                     "connection_start": log.connection_start.isoformat(),
-                    "connection_end": log.connection_end.isoformat() if log.connection_end else None,
+                    "connection_end": log.connection_end.isoformat() if log.connection_end is not None else None,
                     "ip_address": log.ip_address,
                     "country": log.country
                 }

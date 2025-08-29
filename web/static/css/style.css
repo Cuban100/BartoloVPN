@@ -62,6 +62,8 @@ body {
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
+    margin: 0;
+    padding: 0;
     display: flex;
     flex-direction: column;
 }
@@ -74,23 +76,49 @@ body {
 
 /* Login Screen Styles */
 .login-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: var(--spacing-lg);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
     background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+    z-index: 999999;
 }
 
 .login-card {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: var(--spacing-2xl);
-    width: 100%;
+    width: 90%;
     max-width: 400px;
     box-shadow: var(--shadow-xl);
+    z-index: 1000000;
+}
+
+/* Body class for login state */
+body.login-active {
+    overflow: hidden !important;
+}
+
+body.login-active .footer {
+    display: none !important;
+}
+
+/* Fallback: Hide footer when login screen is active */
+body:has(.login-container) {
+    overflow: hidden !important;
+}
+
+body:has(.login-container) .footer,
+.login-container ~ .footer {
+    display: none !important;
 }
 
 .login-header {
@@ -236,10 +264,15 @@ body {
 
 /* Login Footer Styles */
 .login-footer {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    right: 0;
     text-align: center;
     margin-top: var(--spacing-lg);
     padding-top: var(--spacing-md);
-    border-top: 1px solid var(--border-color);
+    border-top: none;
+    z-index: 999998;
 }
 
 .login-footer p {
@@ -418,6 +451,14 @@ body {
     color: var(--text-muted);
 }
 
+.form-help {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
 .checkbox-label {
     display: flex;
     align-items: center;
@@ -429,6 +470,18 @@ body {
 .checkbox-label input[type="checkbox"] {
     width: auto;
     margin: 0;
+}
+
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.checkbox-group .checkbox-label {
+    margin-bottom: 0;
+    font-weight: normal;
 }
 
 /* Cards */
@@ -825,6 +878,37 @@ body {
     text-align: right;
 }
 
+/* Status and Role Badges */
+.status-badge, .role-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-md);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.status-badge.status-active {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.status-badge.status-inactive {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.role-badge.role-admin {
+    background-color: #fbbf24;
+    color: #92400e;
+}
+
+.role-badge.role-user {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .btn {
@@ -891,4 +975,270 @@ body {
 ::selection {
     background-color: var(--primary-color);
     color: white;
+}
+
+/* WireGuard Instructions Styles */
+.instructions-container {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    margin-top: var(--spacing-md);
+    border: 1px solid var(--border-color);
+}
+
+.instruction-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border-color);
+    margin-bottom: var(--spacing-lg);
+    gap: var(--spacing-sm);
+}
+
+.tab-button {
+    background: none;
+    border: none;
+    padding: var(--spacing-md) var(--spacing-lg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    position: relative;
+}
+
+.tab-button:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.tab-button.active {
+    color: var(--primary-color);
+    background: var(--bg-secondary);
+}
+
+.tab-button.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary-color);
+}
+
+.instruction-tab {
+    display: none;
+}
+
+.instruction-tab.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.instruction-tab h4 {
+    color: var(--primary-color);
+    margin-bottom: var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 1.25rem;
+}
+
+.instruction-step {
+    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-lg);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--primary-color);
+}
+
+.instruction-step h5 {
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-md);
+    font-size: 1.1rem;
+}
+
+.instruction-step h6 {
+    color: var(--accent-color);
+    margin-bottom: var(--spacing-sm);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.instruction-step ul,
+.instruction-step ol {
+    margin-left: var(--spacing-lg);
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.instruction-step li {
+    margin-bottom: var(--spacing-sm);
+}
+
+.code-block {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    margin: var(--spacing-md) 0;
+    position: relative;
+    font-family: var(--font-mono);
+    overflow-x: auto;
+}
+
+.code-block code {
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    display: block;
+}
+
+.copy-btn {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+    background: var(--primary-dark);
+    transform: scale(1.05);
+}
+
+.copy-btn.copied {
+    background: var(--success-color);
+}
+
+.client-downloads {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--spacing-md);
+    margin: var(--spacing-md) 0;
+}
+
+.download-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.download-item:hover {
+    border-color: var(--primary-color);
+    background: var(--bg-secondary);
+}
+
+.download-item i {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+.troubleshoot-item {
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    border-left: 4px solid var(--warning-color);
+}
+
+.troubleshoot-item h6 {
+    color: var(--warning-color);
+}
+
+/* Instructions Toggle Animation */
+.instructions-container {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+.instructions-container.expanded {
+    max-height: 2000px;
+    padding: var(--spacing-lg);
+}
+
+/* Platform-specific styling */
+.instruction-step h6 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.instruction-step h6 i.fab {
+    color: var(--primary-color);
+}
+
+.instruction-step p strong {
+    color: var(--accent-color);
+    display: block;
+    margin-top: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
+}
+
+.download-item a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.download-item a:hover {
+    text-decoration: underline;
+}
+
+/* Enhanced troubleshoot items */
+.troubleshoot-item p {
+    margin-bottom: var(--spacing-sm);
+}
+
+.troubleshoot-item p strong {
+    color: var(--info-color);
+    font-weight: 600;
+}
+
+.troubleshoot-item ul {
+    margin-bottom: var(--spacing-md);
+}
+
+/* Code block improvements */
+.code-block {
+    position: relative;
+    overflow-x: auto;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.code-block::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.code-block::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+.code-block::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
 }

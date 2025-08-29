@@ -1,5 +1,20 @@
 {% extends "base.html" %}
 
+{% block extra_css %}
+<style>
+body {
+    overflow: hidden !important;
+}
+.footer {
+    display: none !important;
+}
+#app {
+    height: 100vh !important;
+    overflow: hidden !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
     <!-- Login Screen -->
     {% include "components/login.html" %}
