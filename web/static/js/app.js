@@ -44,7 +44,7 @@ async function handleLogin(event) {
     const password = document.getElementById('password').value;
     
     try {
-        const response = await fetch('/api/auth/login', {
+        const response = await fetch('/auth/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -93,7 +93,7 @@ async function handleRegister(event) {
     }
     
     try {
-        const response = await fetch('/api/auth/register', {
+        const response = await fetch('/auth/register', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -151,7 +151,7 @@ async function loadDashboardData() {
         }
         
         // Load system status
-        const statusResponse = await fetch('/api/status', {
+        const statusResponse = await fetch('/status', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }

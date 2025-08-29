@@ -59,7 +59,7 @@ def get_user_input():
     config['domain'] = input("🌍 Domain (optional): ").strip()
     
     # Web interface
-    config['web_port'] = input("🌐 Web Interface Port (default: 8080): ").strip() or "8080"
+
     config['web_username'] = input("👤 Admin Username (default: admin): ").strip() or "admin"
     config['web_password'] = input("🔒 Admin Password: ").strip()
     if not config['web_password']:
@@ -89,7 +89,7 @@ SERVER_IP={config['server_ip']}
 DOMAIN={config['domain']}
 
 # Web Interface
-WEB_PORT={config['web_port']}
+
 WEB_USERNAME={config['web_username']}
 WEB_PASSWORD={config['web_password']}
 

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     domain: Optional[str] = Field("", env="DOMAIN")
     
     # Web Interface
-    web_port: int = Field(8080, env="WEB_PORT")
+
     web_username: str = Field("admin", env="WEB_USERNAME")
     web_password: str = Field(..., env="WEB_PASSWORD")
     
@@ -146,7 +146,7 @@ settings = Settings()
 
 # Export commonly used settings for convenience
 SERVER_IP = settings.server_ip
-WEB_PORT = settings.web_port
+
 WEB_USERNAME = settings.web_username
 WEB_PASSWORD = settings.web_password
 JWT_SECRET_KEY = settings.jwt_secret_key

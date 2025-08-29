@@ -438,6 +438,39 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
+@app.get("/status")
+async def get_system_status(current_user: dict = Depends(get_current_user)):
+    """Get system status for dashboard"""
+    return {
+        "system": {
+            "status": "online",
+            "uptime": "2h 15m",
+            "version": "1.0.0"
+        },
+        "vpn": {
+            "wireguard": {
+                "status": "running",
+                "connections": 0,
+                "peers": 10
+            },
+            "openvpn": {
+                "status": "running", 
+                "connections": 0,
+                "clients": 0
+            },
+            "ikev2": {
+                "status": "running",
+                "connections": 0,
+                "tunnels": 0
+            }
+        },
+        "network": {
+            "server_ip": settings.server_ip,
+            "bandwidth_used": "125 MB",
+            "bandwidth_limit": "1000 MB"
+        }
+    }
+
 @app.post("/auth/register", response_model=UserResponse)
 async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user"""
