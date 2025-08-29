@@ -180,14 +180,109 @@ async function loadDashboardData() {
 
 // Update system status
 function updateSystemStatus(data) {
-    // Update status indicators
+    console.log('Updating system status with data:', data);
+    
+    // Update system status
     const systemStatus = document.getElementById('system-status');
-    if (systemStatus) {
-        systemStatus.textContent = data.status || 'Unknown';
-        systemStatus.className = `stat-value ${data.status === 'healthy' ? 'status-healthy' : 'status-warning'}`;
+    if (systemStatus && data.system) {
+        systemStatus.textContent = data.system.status || 'Unknown';
+        systemStatus.className = `stat-value ${data.system.status === 'online' ? 'status-healthy' : 'status-warning'}`;
     }
     
-    // Update other status elements...
+    // Update VPN service statuses
+    if (data.vpn) {
+        // WireGuard status
+        const wireguardStatus = document.getElementById('wireguard-status');
+        if (wireguardStatus && data.vpn.wireguard) {
+            wireguardStatus.textContent = data.vpn.wireguard.status || 'Unknown';
+            wireguardStatus.className = `stat-value ${data.vpn.wireguard.status === 'running' ? 'status-healthy' : 'status-warning'}`;
+        }
+        
+        // OpenVPN status
+        const openvpnStatus = document.getElementById('openvpn-status');
+        if (openvpnStatus && data.vpn.openvpn) {
+            openvpnStatus.textContent = data.vpn.openvpn.status || 'Unknown';
+            openvpnStatus.className = `stat-value ${data.vpn.openvpn.status === 'running' ? 'status-healthy' : 'status-warning'}`;
+        }
+        
+        // IKEv2 status
+        const ikev2Status = document.getElementById('ikev2-status');
+        if (ikev2Status && data.vpn.ikev2) {
+            ikev2Status.textContent = data.vpn.ikev2.status || 'Unknown';
+            ikev2Status.className = `stat-value ${data.vpn.ikev2.status === 'running' ? 'status-healthy' : 'status-warning'}`;
+        }
+    }
+    
+    // Update network info
+    if (data.network) {
+        const bandwidthUsage = document.getElementById('bandwidth-usage');
+        if (bandwidthUsage) {
+            bandwidthUsage.textContent = data.network.bandwidth_used || '0 MB/s';
+        }
+    }
+    
+    // Update active users (sum of all connections)
+    const activeUsers = document.getElementById('active-users');
+    if (activeUsers && data.vpn) {
+        const totalConnections = (data.vpn.wireguard?.connections || 0) + 
+                                (data.vpn.openvpn?.connections || 0) + 
+                                (data.vpn.ikev2?.connections || 0);
+        activeUsers.textContent = totalConnections;
+    }
+    
+    // Load system resources
+    loadSystemResources();
+}
+
+// Load system resources (CPU, Memory, Disk)
+async function loadSystemResources() {
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) return;
+        
+        const response = await fetch('/api/system/resources', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            updateSystemResources(data);
+        }
+    } catch (error) {
+        console.error('Error loading system resources:', error);
+    }
+}
+
+// Update system resources display
+function updateSystemResources(data) {
+    // CPU Usage
+    const cpuProgress = document.getElementById('cpu-progress');
+    const cpuPercent = document.getElementById('cpu-percent');
+    if (cpuProgress && cpuPercent) {
+        const cpuValue = data.cpu_percent || 0;
+        cpuProgress.style.width = `${cpuValue}%`;
+        cpuPercent.textContent = `${cpuValue}%`;
+    }
+    
+    // Memory Usage
+    const memoryProgress = document.getElementById('memory-progress');
+    const memoryPercent = document.getElementById('memory-percent');
+    if (memoryProgress && memoryPercent) {
+        const memoryValue = data.memory_percent || 0;
+        memoryProgress.style.width = `${memoryValue}%`;
+        memoryPercent.textContent = `${memoryValue}%`;
+    }
+    
+    // Disk Usage
+    const diskProgress = document.getElementById('disk-progress');
+    const diskPercent = document.getElementById('disk-percent');
+    if (diskProgress && diskPercent) {
+        const diskValue = data.disk_percent || 0;
+        diskProgress.style.width = `${diskValue}%`;
+        diskPercent.textContent = `${diskValue}%`;
+    }
 }
 
 // Logout functionality

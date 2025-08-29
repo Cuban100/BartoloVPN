@@ -506,6 +506,38 @@ async def get_system_status(current_user: dict = Depends(get_current_user)):
         }
     }
 
+@app.get("/api/system/resources")
+async def get_system_resources(current_user: dict = Depends(get_current_user)):
+    """Get system resources (CPU, Memory, Disk)"""
+    try:
+        # Get CPU usage
+        cpu_percent = psutil.cpu_percent(interval=1)
+        
+        # Get memory usage
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        
+        # Get disk usage
+        disk = psutil.disk_usage('/')
+        disk_percent = (disk.used / disk.total) * 100
+        
+        return {
+            "cpu_percent": round(cpu_percent, 1),
+            "memory_percent": round(memory_percent, 1),
+            "disk_percent": round(disk_percent, 1),
+            "memory_used_gb": round(memory.used / (1024**3), 2),
+            "memory_total_gb": round(memory.total / (1024**3), 2),
+            "disk_used_gb": round(disk.used / (1024**3), 2),
+            "disk_total_gb": round(disk.total / (1024**3), 2)
+        }
+    except Exception as e:
+        return {
+            "cpu_percent": 0,
+            "memory_percent": 0,
+            "disk_percent": 0,
+            "error": str(e)
+        }
+
 @app.post("/auth/register", response_model=UserResponse)
 async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user"""
