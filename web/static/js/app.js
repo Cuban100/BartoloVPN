@@ -4,16 +4,8 @@
 let currentUser = null;
 let isLoggedIn = false;
 
-// DOM elements
-const loginScreen = document.getElementById('login-screen');
-const dashboard = document.getElementById('dashboard');
-const loginForm = document.getElementById('login-form');
-const registerForm = document.getElementById('register-form');
-const toggleForm = document.getElementById('toggle-form');
-const toggleText = document.getElementById('toggle-text');
-const toggleButtonText = document.getElementById('toggle-button-text');
-const loginError = document.getElementById('login-error');
-const registerError = document.getElementById('register-error');
+// DOM elements (will be initialized after DOM loads)
+let loginScreen, dashboard, loginForm, registerForm, toggleForm, toggleText, toggleButtonText, loginError, registerError;
 
 // Form toggle functionality
 function toggleLoginRegister() {
@@ -57,9 +49,10 @@ async function handleLogin(event) {
         if (response.ok) {
             // Store token
             localStorage.setItem('authToken', data.access_token);
-            currentUser = data.user;
+            currentUser = { username: data.username };
             isLoggedIn = true;
             
+            console.log('Login successful, showing dashboard...');
             // Show dashboard
             showDashboard();
         } else {
@@ -120,12 +113,27 @@ async function handleRegister(event) {
 
 // Show dashboard
 function showDashboard() {
-    loginScreen.style.display = 'none';
-    dashboard.style.display = 'block';
+    console.log('showDashboard called');
+    console.log('loginScreen:', loginScreen);
+    console.log('dashboard:', dashboard);
+    
+    if (loginScreen) {
+        loginScreen.style.display = 'none';
+        console.log('Login screen hidden');
+    }
+    
+    if (dashboard) {
+        dashboard.style.display = 'block';
+        console.log('Dashboard shown');
+    }
     
     // Update user info
     if (currentUser) {
-        document.getElementById('current-user').textContent = currentUser.username;
+        const currentUserElement = document.getElementById('current-user');
+        if (currentUserElement) {
+            currentUserElement.textContent = currentUser.username;
+            console.log('User info updated:', currentUser.username);
+        }
     }
     
     // Load dashboard data
@@ -215,30 +223,57 @@ function switchTab(tabName) {
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing elements...');
+    
+    // Initialize DOM elements
+    loginScreen = document.getElementById('login-screen');
+    dashboard = document.getElementById('dashboard');
+    loginForm = document.getElementById('login-form');
+    registerForm = document.getElementById('register-form');
+    toggleForm = document.getElementById('toggle-form');
+    toggleText = document.getElementById('toggle-text');
+    toggleButtonText = document.getElementById('toggle-button-text');
+    loginError = document.getElementById('login-error');
+    registerError = document.getElementById('register-error');
+    
+    console.log('DOM elements initialized:', {
+        loginScreen: !!loginScreen,
+        dashboard: !!dashboard,
+        loginForm: !!loginForm,
+        registerForm: !!registerForm
+    });
+    
     // Check if user is already logged in
     const token = localStorage.getItem('authToken');
     if (token) {
+        console.log('Token found, loading dashboard...');
         // Validate token and show dashboard
         loadDashboardData();
+    } else {
+        console.log('No token found, showing login screen...');
     }
     
     // Form event listeners
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
+        console.log('Login form listener added');
     }
     
     if (registerForm) {
         registerForm.addEventListener('submit', handleRegister);
+        console.log('Register form listener added');
     }
     
     if (toggleForm) {
         toggleForm.addEventListener('click', toggleLoginRegister);
+        console.log('Toggle form listener added');
     }
     
     // Logout button
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', handleLogout);
+        console.log('Logout button listener added');
     }
     
     // Tab navigation
@@ -249,6 +284,7 @@ document.addEventListener('DOMContentLoaded', function() {
             switchTab(tabName);
         });
     });
+    console.log('Tab navigation listeners added');
 });
 
 // Export functions for global access
