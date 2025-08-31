@@ -89,3 +89,72 @@
         </div>
     </div>
 </div>
+
+<!-- Edit User Modal -->
+<div id="edit-user-modal" class="modal-overlay" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Edit User</h3>
+            <button class="modal-close" onclick="closeEditUserModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="edit-user-form">
+                <input type="hidden" id="edit-user-id" name="edit-user-id">
+                <div class="form-group">
+                    <label for="edit-user-username">Username</label>
+                    <input type="text" id="edit-user-username" name="edit-user-username" required placeholder="Enter username">
+                    <small class="form-help">Must be 3-50 characters long</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-email">Email</label>
+                    <input type="email" id="edit-user-email" name="edit-user-email" placeholder="user@example.com">
+                    <small class="form-help">Used for notifications and password recovery</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-password">New Password (Optional)</label>
+                    <input type="password" id="edit-user-password" name="edit-user-password" placeholder="Leave blank to keep current password">
+                    <small class="form-help">Minimum 6 characters - leave blank to keep current password</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-role">Role</label>
+                    <select id="edit-user-role" name="edit-user-role" required>
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <small class="form-help">Admins can manage users and server settings</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-status">Status</label>
+                    <select id="edit-user-status" name="edit-user-status" required>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="suspended">Suspended</option>
+                    </select>
+                    <small class="form-help">Control user access to VPN services</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-protocols">Allowed Protocols</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="edit-user-protocols" value="wireguard" id="edit-wireguard">
+                            WireGuard
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="edit-user-protocols" value="openvpn" id="edit-openvpn">
+                            OpenVPN
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="edit-user-protocols" value="ikev2" id="edit-ikev2">
+                            IKEv2
+                        </label>
+                    </div>
+                    <small class="form-help">Select which VPN protocols this user can access</small>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditUserModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

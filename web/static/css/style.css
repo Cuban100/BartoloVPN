@@ -1109,6 +1109,110 @@ body:has(.login-container) .footer,
     }
 }
 
+/* Configuration Value Container with Toggle and Copy */
+.config-value-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-tertiary);
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+}
+
+.config-value-container .config-value {
+    flex: 1;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+
+.config-value.masked {
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+}
+
+.toggle-visibility-btn, .copy-btn.small {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+}
+
+.toggle-visibility-btn:hover, .copy-btn.small:hover {
+    background: var(--bg-primary);
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.toggle-visibility-btn i, .copy-btn.small i {
+    font-size: 0.75rem;
+}
+
+/* Responsive adjustments for config value containers */
+@media (min-width: 769px) {
+    .config-value-container {
+        max-width: 400px;
+    }
+    
+    .config-value-container .config-value {
+        font-size: 0.875rem;
+    }
+    
+    .toggle-visibility-btn, .copy-btn.small {
+        min-width: 32px;
+        height: 32px;
+    }
+    
+    .toggle-visibility-btn i, .copy-btn.small i {
+        font-size: 0.875rem;
+    }
+}
+
+/* Inline config value containers for table cells */
+.config-value-container.inline {
+    background: transparent;
+    border: none;
+    padding: 0;
+    gap: 0.25rem;
+}
+
+.config-value-container.inline .config-value {
+    background: var(--bg-tertiary);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    font-size: 0.75rem;
+    max-width: 200px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.toggle-visibility-btn.small, .copy-btn.small {
+    min-width: 24px;
+    height: 24px;
+    padding: 0.125rem;
+}
+
+.toggle-visibility-btn.small i, .copy-btn.small i {
+    font-size: 0.625rem;
+}
+
 /* Dashboard Content Styles */
 .page-header {
     margin-bottom: 2rem;
@@ -2031,5 +2135,864 @@ body:has(.login-container) .footer,
         position: static;
         margin-top: 0.5rem;
         width: 100%;
+    }
+}
+
+/* ========================================
+   MONITORING DASHBOARD STYLES
+   ======================================== */
+
+/* Monitoring Controls */
+.monitoring-controls {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    flex-wrap: wrap;
+}
+
+.auto-refresh-control {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 0.875rem;
+}
+
+.auto-refresh-control label {
+    margin: 0;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.auto-refresh-control input[type="checkbox"] {
+    margin: 0;
+    transform: scale(1.1);
+    accent-color: var(--primary-color);
+}
+
+.auto-refresh-control select {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+}
+
+.last-update {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* System Status Indicator */
+.system-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 0.875rem;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: all 0.3s ease;
+}
+
+.status-dot.healthy {
+    background: var(--success-color);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.status-dot.warning {
+    background: var(--warning-color);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+.status-dot.critical {
+    background: var(--danger-color);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+    animation: pulse-danger 2s infinite;
+}
+
+@keyframes pulse-danger {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Monitoring Grid */
+.monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+}
+
+.monitoring-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-lg);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.monitoring-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary-color);
+}
+
+.monitoring-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: var(--spacing-lg);
+    font-size: 20px;
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+.stat-icon.cpu {
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+}
+
+.stat-icon.memory {
+    background: linear-gradient(135deg, var(--success-color), #059669);
+}
+
+.stat-icon.disk {
+    background: linear-gradient(135deg, var(--warning-color), #d97706);
+}
+
+.stat-icon.network {
+    background: linear-gradient(135deg, var(--info-color), #1d4ed8);
+}
+
+.stat-info h3 {
+    margin: 0 0 var(--spacing-xs) 0;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.stat-value {
+    font-size: 2em;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1;
+    margin: 0;
+}
+
+/* Progress Bars */
+.progress-container {
+    margin-top: var(--spacing-lg);
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    position: relative;
+    margin-bottom: var(--spacing-sm);
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: var(--radius-sm);
+    transition: width 0.8s ease, background-color 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: progress-shine 2s infinite;
+}
+
+@keyframes progress-shine {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.progress-fill.cpu {
+    background: linear-gradient(90deg, var(--primary-color), var(--primary-dark));
+}
+
+.progress-fill.memory {
+    background: linear-gradient(90deg, var(--success-color), #059669);
+}
+
+.progress-fill.disk {
+    background: linear-gradient(90deg, var(--warning-color), #d97706);
+}
+
+.progress-details {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.detail-label {
+    font-weight: 500;
+}
+
+.detail-value {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.detail-separator {
+    color: var(--text-muted);
+}
+
+/* Network Stats */
+.network-stats {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+}
+
+.network-stat {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 0.875rem;
+}
+
+.network-label {
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.network-value {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* VPN Protocol Cards */
+.vpn-protocols-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+}
+
+.vpn-protocol-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-lg);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.vpn-protocol-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.vpn-protocol-card.wireguard {
+    border-top: 4px solid var(--success-color);
+}
+
+.vpn-protocol-card.openvpn {
+    border-top: 4px solid var(--primary-color);
+}
+
+.vpn-protocol-card.ikev2 {
+    border-top: 4px solid #8b5cf6;
+}
+
+.protocol-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-lg);
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
+.protocol-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--text-primary);
+}
+
+.vpn-protocol-card.wireguard .protocol-icon {
+    background: var(--success-color);
+}
+
+.vpn-protocol-card.openvpn .protocol-icon {
+    background: var(--primary-color);
+}
+
+.vpn-protocol-card.ikev2 .protocol-icon {
+    background: #8b5cf6;
+}
+
+.protocol-info h4 {
+    margin: 0 0 var(--spacing-xs) 0;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.protocol-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 0.8rem;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+
+.status-indicator.active {
+    background: var(--success-color);
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+
+.status-indicator.inactive {
+    background: var(--danger-color);
+}
+
+.protocol-connections {
+    text-align: right;
+}
+
+.connections-count {
+    display: block;
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+.connections-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Protocol Metrics */
+.protocol-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+.metric {
+    text-align: center;
+    padding: var(--spacing-sm);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.metric-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+}
+
+.metric-value {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* VPN Status Summary */
+.vpn-status-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 0.875rem;
+}
+
+.total-connections {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary-color);
+    border-radius: 16px;
+    font-weight: 500;
+    font-size: 0.8rem;
+}
+
+/* Connection Filters */
+.connections-filter {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: var(--spacing-xs) var(--spacing-lg);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.filter-btn:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.filter-btn.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--text-primary);
+}
+
+/* Connections Table */
+.connections-table-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-top: var(--spacing-lg);
+}
+
+.connections-table {
+    width: 100%;
+    margin: 0;
+}
+
+.connections-table th {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: left;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-bottom: 2px solid var(--border-color);
+    font-size: 0.875rem;
+}
+
+.connections-table td {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.connections-table tr:hover {
+    background: var(--bg-tertiary);
+}
+
+.connections-table .loading {
+    padding: var(--spacing-2xl);
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+}
+
+/* System Alerts */
+.alerts-container {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.alert-placeholder {
+    padding: var(--spacing-xl);
+    text-align: center;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    font-style: italic;
+}
+
+.system-alert {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    margin-bottom: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    border-left: 4px solid;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.3s ease;
+}
+
+.system-alert.info {
+    background: rgba(59, 130, 246, 0.1);
+    border-left-color: var(--info-color);
+    color: var(--info-color);
+}
+
+.system-alert.warning {
+    background: rgba(245, 158, 11, 0.1);
+    border-left-color: var(--warning-color);
+    color: var(--warning-color);
+}
+
+.system-alert.error {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: var(--danger-color);
+    color: var(--danger-color);
+}
+
+.system-alert.success {
+    background: rgba(16, 185, 129, 0.1);
+    border-left-color: var(--success-color);
+    color: var(--success-color);
+}
+
+.alert-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.alert-time {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    margin-left: var(--spacing-sm);
+}
+
+.alert-dismiss {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    border-radius: var(--radius-sm);
+    transition: all 0.2s ease;
+}
+
+.alert-dismiss:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive design for monitoring */
+@media (max-width: 768px) {
+    .monitoring-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-sm);
+    }
+    
+    .control-group {
+        justify-content: center;
+    }
+    
+    .monitoring-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .vpn-protocols-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .protocol-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+    }
+    
+    .protocol-metrics {
+        grid-template-columns: 1fr;
+    }
+    
+    .connections-filter {
+        justify-content: center;
+    }
+    
+    .connections-table-container {
+        overflow-x: auto;
+    }
+    
+    .connections-table {
+        min-width: 600px;
+    }
+}
+
+/* ========================================
+   UNINSTALL & DANGER ZONE STYLES
+   ======================================== */
+
+/* Danger Section */
+.danger-section {
+    border: 2px solid var(--danger-color);
+    border-radius: var(--radius-lg);
+    background: rgba(239, 68, 68, 0.05);
+    margin-top: var(--spacing-xl);
+}
+
+.danger-section .section-header h3 {
+    color: var(--danger-color);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.danger-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.danger-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    gap: var(--spacing-lg);
+}
+
+.action-info h4 {
+    margin: 0 0 var(--spacing-xs) 0;
+    color: var(--text-primary);
+    font-size: 1.1em;
+}
+
+.action-info p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.section-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+/* Danger Modal Styles */
+.modal-danger {
+    border: 2px solid var(--danger-color);
+}
+
+.modal-danger .modal-header {
+    background: rgba(239, 68, 68, 0.1);
+    border-bottom: 1px solid var(--danger-color);
+}
+
+.modal-danger .modal-header h3 {
+    color: var(--danger-color);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.warning-message {
+    padding: var(--spacing-lg);
+    background: rgba(239, 68, 68, 0.05);
+    border: 1px solid var(--danger-color);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.warning-message i {
+    font-size: 2em;
+    color: var(--danger-color);
+    float: left;
+    margin-right: var(--spacing-md);
+    margin-top: var(--spacing-xs);
+}
+
+.warning-message h4 {
+    color: var(--danger-color);
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: 1.2em;
+}
+
+.warning-message p {
+    margin: var(--spacing-sm) 0;
+    color: var(--text-secondary);
+}
+
+.warning-list {
+    margin: var(--spacing-md) 0;
+    padding-left: var(--spacing-lg);
+    color: var(--text-muted);
+}
+
+.warning-list li {
+    margin: var(--spacing-xs) 0;
+    color: var(--text-secondary);
+}
+
+.warning-list li strong {
+    color: var(--danger-color);
+}
+
+.critical-warning {
+    background: rgba(220, 38, 38, 0.1);
+    border: 2px solid var(--danger-color);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    margin: var(--spacing-md) 0;
+    text-align: center;
+}
+
+.critical-warning i {
+    font-size: 1.5em;
+    color: var(--danger-color);
+    margin-right: var(--spacing-sm);
+}
+
+.critical-warning p {
+    margin: var(--spacing-xs) 0;
+    color: var(--danger-color);
+    font-weight: 600;
+}
+
+/* Confirmation Input Styles */
+#remove-peers-confirmation,
+#uninstall-wireguard-confirmation,
+#remove-openvpn-clients-confirmation,
+#uninstall-openvpn-confirmation,
+#remove-ikev2-clients-confirmation,
+#uninstall-ikev2-confirmation {
+    width: 100%;
+    padding: var(--spacing-sm);
+    margin: var(--spacing-md) 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+#remove-peers-confirmation:focus,
+#uninstall-wireguard-confirmation:focus,
+#remove-openvpn-clients-confirmation:focus,
+#uninstall-openvpn-confirmation:focus,
+#remove-ikev2-clients-confirmation:focus,
+#uninstall-ikev2-confirmation:focus {
+    outline: none;
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* Button States for Confirmations */
+#confirm-remove-peers-btn:disabled,
+#confirm-uninstall-wireguard-btn:disabled,
+#confirm-remove-openvpn-clients-btn:disabled,
+#confirm-uninstall-openvpn-btn:disabled,
+#confirm-remove-ikev2-clients-btn:disabled,
+#confirm-uninstall-ikev2-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#confirm-remove-peers-btn:not(:disabled),
+#confirm-uninstall-wireguard-btn:not(:disabled),
+#confirm-remove-openvpn-clients-btn:not(:disabled),
+#confirm-uninstall-openvpn-btn:not(:disabled),
+#confirm-remove-ikev2-clients-btn:not(:disabled),
+#confirm-uninstall-ikev2-btn:not(:disabled) {
+    animation: pulse-danger 2s infinite;
+}
+
+@keyframes pulse-danger {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    }
+}
+
+/* Mobile Responsiveness for Danger Zones */
+@media (max-width: 768px) {
+    .danger-action {
+        flex-direction: column;
+        text-align: center;
+        gap: var(--spacing-md);
+    }
+    
+    .section-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .section-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .warning-message i {
+        float: none;
+        display: block;
+        text-align: center;
+        margin: 0 0 var(--spacing-md) 0;
     }
 }

@@ -369,51 +369,421 @@ function updateSystemStatus(data) {
     loadSystemResources();
 }
 
-// Load system resources (CPU, Memory, Disk)
+// Enhanced Monitoring System with Real-time Updates
+let monitoringInterval = null;
+let autoRefreshEnabled = true;
+let refreshIntervalMs = 10000; // 10 seconds default
+
 async function loadSystemResources() {
     try {
-        const token = localStorage.getItem('authToken');
-        if (!token) return;
-        
-    const response = await apiFetch('/api/system/resources');
-        
-        if (response.ok) {
-            const data = await response.json();
-            updateSystemResources(data);
+        const response = await apiFetch('/api/system/resources');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+        const data = await response.json();
+        updateSystemResources(data);
+        updateLastRefreshTime();
+        updateSystemHealth(data);
     } catch (error) {
         console.error('Error loading system resources:', error);
+        showSystemAlert('error', 'Failed to load system resources: ' + error.message);
     }
 }
 
-// Update system resources display
 function updateSystemResources(data) {
-    // CPU Usage
-    const cpuProgress = document.getElementById('cpu-progress');
-    const cpuPercent = document.getElementById('cpu-percent');
-    if (cpuProgress && cpuPercent) {
-        const cpuValue = data.cpu_percent || 0;
-        cpuProgress.style.width = `${cpuValue}%`;
-        cpuPercent.textContent = `${cpuValue}%`;
+    // Update CPU
+    const cpuUsage = data.cpu?.usage || data.cpu_percent || 0;
+    const cpuLoad = data.cpu?.load_average || 0;
+    
+    const cpuUsageEl = document.getElementById('cpu-usage');
+    const cpuProgressEl = document.getElementById('cpu-progress');
+    const cpuLoadEl = document.getElementById('cpu-load');
+    
+    if (cpuUsageEl) cpuUsageEl.textContent = `${cpuUsage.toFixed(1)}%`;
+    if (cpuProgressEl) cpuProgressEl.style.width = `${cpuUsage}%`;
+    if (cpuLoadEl) cpuLoadEl.textContent = cpuLoad.toFixed(2);
+    
+    // Update Memory
+    const memoryUsage = data.memory?.percent || data.memory_percent || 0;
+    const memoryUsed = data.memory?.used_gb || 0;
+    const memoryTotal = data.memory?.total_gb || 0;
+    
+    const memoryUsageEl = document.getElementById('memory-usage');
+    const memoryProgressEl = document.getElementById('memory-progress');
+    const memoryUsedEl = document.getElementById('memory-used');
+    const memoryTotalEl = document.getElementById('memory-total');
+    
+    if (memoryUsageEl) memoryUsageEl.textContent = `${memoryUsage.toFixed(1)}%`;
+    if (memoryProgressEl) memoryProgressEl.style.width = `${memoryUsage}%`;
+    if (memoryUsedEl) memoryUsedEl.textContent = `${memoryUsed.toFixed(1)} GB`;
+    if (memoryTotalEl) memoryTotalEl.textContent = `${memoryTotal.toFixed(1)} GB`;
+    
+    // Update Disk
+    const diskUsage = data.disk?.percent || data.disk_percent || 0;
+    const diskUsed = data.disk?.used_gb || 0;
+    const diskTotal = data.disk?.total_gb || 0;
+    
+    const diskUsageEl = document.getElementById('disk-usage');
+    const diskProgressEl = document.getElementById('disk-progress');
+    const diskUsedEl = document.getElementById('disk-used');
+    const diskTotalEl = document.getElementById('disk-total');
+    
+    if (diskUsageEl) diskUsageEl.textContent = `${diskUsage.toFixed(1)}%`;
+    if (diskProgressEl) diskProgressEl.style.width = `${diskUsage}%`;
+    if (diskUsedEl) diskUsedEl.textContent = `${diskUsed.toFixed(1)} GB`;
+    if (diskTotalEl) diskTotalEl.textContent = `${diskTotal.toFixed(1)} GB`;
+    
+    // Update Network
+    const networkSpeed = data.network?.speed_mbps || 0;
+    const networkSent = data.network?.bytes_sent_mb || 0;
+    const networkReceived = data.network?.bytes_recv_mb || 0;
+    
+    const networkSpeedEl = document.getElementById('network-speed');
+    const networkSentEl = document.getElementById('network-sent');
+    const networkReceivedEl = document.getElementById('network-received');
+    
+    if (networkSpeedEl) networkSpeedEl.textContent = `${networkSpeed.toFixed(1)} MB/s`;
+    if (networkSentEl) networkSentEl.textContent = `${networkSent.toFixed(1)} MB`;
+    if (networkReceivedEl) networkReceivedEl.textContent = `${networkReceived.toFixed(1)} MB`;
+    
+    // Update VPN Performance (if available)
+    updateVPNMetrics(data.vpn || {});
+}
+
+function updateVPNMetrics(vpnData) {
+    // WireGuard metrics
+    const wgData = vpnData.wireguard || {};
+    const wgConnectionsEl = document.getElementById('wg-connections');
+    const wgBandwidthEl = document.getElementById('wg-bandwidth');
+    const wgLatencyEl = document.getElementById('wg-latency');
+    const wgTransferEl = document.getElementById('wg-transfer');
+    
+    if (wgConnectionsEl) wgConnectionsEl.textContent = wgData.connections || 0;
+    if (wgBandwidthEl) wgBandwidthEl.textContent = `${(wgData.bandwidth || 0).toFixed(1)} MB/s`;
+    if (wgLatencyEl) wgLatencyEl.textContent = `${wgData.latency || 0}ms`;
+    if (wgTransferEl) wgTransferEl.textContent = `${(wgData.transfer || 0).toFixed(1)} MB`;
+    updateProtocolStatus('wg', wgData.active || false);
+    
+    // OpenVPN metrics
+    const ovpnData = vpnData.openvpn || {};
+    const ovpnConnectionsEl = document.getElementById('ovpn-connections');
+    const ovpnBandwidthEl = document.getElementById('ovpn-bandwidth');
+    const ovpnLatencyEl = document.getElementById('ovpn-latency');
+    const ovpnTransferEl = document.getElementById('ovpn-transfer');
+    
+    if (ovpnConnectionsEl) ovpnConnectionsEl.textContent = ovpnData.connections || 0;
+    if (ovpnBandwidthEl) ovpnBandwidthEl.textContent = `${(ovpnData.bandwidth || 0).toFixed(1)} MB/s`;
+    if (ovpnLatencyEl) ovpnLatencyEl.textContent = `${ovpnData.latency || 0}ms`;
+    if (ovpnTransferEl) ovpnTransferEl.textContent = `${(ovpnData.transfer || 0).toFixed(1)} MB`;
+    updateProtocolStatus('ovpn', ovpnData.active || false);
+    
+    // IKEv2 metrics
+    const ikev2Data = vpnData.ikev2 || {};
+    const ikev2ConnectionsEl = document.getElementById('ikev2-connections');
+    const ikev2BandwidthEl = document.getElementById('ikev2-bandwidth');
+    const ikev2LatencyEl = document.getElementById('ikev2-latency');
+    const ikev2TransferEl = document.getElementById('ikev2-transfer');
+    
+    if (ikev2ConnectionsEl) ikev2ConnectionsEl.textContent = ikev2Data.connections || 0;
+    if (ikev2BandwidthEl) ikev2BandwidthEl.textContent = `${(ikev2Data.bandwidth || 0).toFixed(1)} MB/s`;
+    if (ikev2LatencyEl) ikev2LatencyEl.textContent = `${ikev2Data.latency || 0}ms`;
+    if (ikev2TransferEl) ikev2TransferEl.textContent = `${(ikev2Data.transfer || 0).toFixed(1)} MB`;
+    updateProtocolStatus('ikev2', ikev2Data.active || false);
+    
+    // Update total connections
+    const totalConnections = (wgData.connections || 0) + (ovpnData.connections || 0) + (ikev2Data.connections || 0);
+    const totalConnectionsEl = document.getElementById('total-vpn-connections');
+    if (totalConnectionsEl) {
+        totalConnectionsEl.textContent = `${totalConnections} Active Connection${totalConnections !== 1 ? 's' : ''}`;
+    }
+}
+
+function updateProtocolStatus(protocol, isActive) {
+    const statusDot = document.getElementById(`${protocol}-status-dot`);
+    const statusText = document.getElementById(`${protocol}-status-text`);
+    
+    if (statusDot && statusText) {
+        if (isActive) {
+            statusDot.className = 'status-indicator active';
+            statusText.textContent = 'Active';
+        } else {
+            statusDot.className = 'status-indicator inactive';
+            statusText.textContent = 'Inactive';
+        }
+    }
+}
+
+function updateSystemHealth(data) {
+    const healthDot = document.getElementById('system-health-dot');
+    const healthText = document.getElementById('system-health-text');
+    
+    if (!healthDot || !healthText) return;
+    
+    const cpuUsage = data.cpu?.usage || data.cpu_percent || 0;
+    const memoryUsage = data.memory?.percent || data.memory_percent || 0;
+    const diskUsage = data.disk?.percent || data.disk_percent || 0;
+    
+    let status = 'healthy';
+    let text = 'System Healthy';
+    
+    if (cpuUsage > 90 || memoryUsage > 90 || diskUsage > 95) {
+        status = 'critical';
+        text = 'Critical Usage';
+        showSystemAlert('error', `High resource usage detected - CPU: ${cpuUsage.toFixed(1)}%, Memory: ${memoryUsage.toFixed(1)}%, Disk: ${diskUsage.toFixed(1)}%`);
+    } else if (cpuUsage > 80 || memoryUsage > 80 || diskUsage > 85) {
+        status = 'warning';
+        text = 'High Usage';
+        showSystemAlert('warning', `Elevated resource usage - CPU: ${cpuUsage.toFixed(1)}%, Memory: ${memoryUsage.toFixed(1)}%, Disk: ${diskUsage.toFixed(1)}%`);
     }
     
-    // Memory Usage
-    const memoryProgress = document.getElementById('memory-progress');
-    const memoryPercent = document.getElementById('memory-percent');
-    if (memoryProgress && memoryPercent) {
-        const memoryValue = data.memory_percent || 0;
-        memoryProgress.style.width = `${memoryValue}%`;
-        memoryPercent.textContent = `${memoryValue}%`;
+    healthDot.className = `status-dot ${status}`;
+    healthText.textContent = text;
+}
+
+function updateLastRefreshTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString();
+    const lastUpdateEl = document.getElementById('last-update-time');
+    if (lastUpdateEl) lastUpdateEl.textContent = timeString;
+}
+
+function refreshAllMetrics() {
+    loadSystemResources();
+    loadActiveConnections();
+}
+
+function toggleAutoRefresh() {
+    const checkbox = document.getElementById('auto-refresh-toggle');
+    autoRefreshEnabled = checkbox ? checkbox.checked : true;
+    
+    if (autoRefreshEnabled) {
+        startMonitoringInterval();
+        showSystemAlert('info', 'Auto-refresh enabled');
+    } else {
+        stopMonitoringInterval();
+        showSystemAlert('info', 'Auto-refresh disabled');
+    }
+}
+
+function updateRefreshInterval() {
+    const select = document.getElementById('refresh-interval');
+    refreshIntervalMs = select ? parseInt(select.value) : 10000;
+    
+    if (autoRefreshEnabled) {
+        stopMonitoringInterval();
+        startMonitoringInterval();
     }
     
-    // Disk Usage
-    const diskProgress = document.getElementById('disk-progress');
-    const diskPercent = document.getElementById('disk-percent');
-    if (diskProgress && diskPercent) {
-        const diskValue = data.disk_percent || 0;
-        diskProgress.style.width = `${diskValue}%`;
-        diskPercent.textContent = `${diskValue}%`;
+    const seconds = refreshIntervalMs / 1000;
+    showSystemAlert('info', `Refresh interval updated to ${seconds} seconds`);
+}
+
+function startMonitoringInterval() {
+    stopMonitoringInterval();
+    if (autoRefreshEnabled) {
+        monitoringInterval = setInterval(refreshAllMetrics, refreshIntervalMs);
     }
+}
+
+function stopMonitoringInterval() {
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+    }
+}
+
+async function loadActiveConnections() {
+    try {
+        const response = await apiFetch('/api/system/connections');
+        if (!response.ok) {
+            // Connections endpoint might not exist, create dummy data
+            updateConnectionsTable([]);
+            return;
+        }
+        const connections = await response.json();
+        updateConnectionsTable(connections);
+    } catch (error) {
+        console.error('Error loading active connections:', error);
+        updateConnectionsTable([]);
+    }
+}
+
+function updateConnectionsTable(connections) {
+    const tbody = document.getElementById('active-connections-table');
+    if (!tbody) return;
+    
+    if (connections.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">No active connections</td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = connections.map(conn => `
+        <tr data-protocol="${conn.protocol.toLowerCase()}">
+            <td>${conn.username || 'Unknown'}</td>
+            <td>
+                <span class="protocol-badge ${conn.protocol.toLowerCase()}">${conn.protocol}</span>
+            </td>
+            <td>${conn.ip_address || 'N/A'}</td>
+            <td>${conn.connected_since || 'N/A'}</td>
+            <td>${conn.data_transfer || '0 MB'}</td>
+            <td>
+                <span class="status-badge ${conn.status.toLowerCase()}">${conn.status}</span>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-danger" onclick="disconnectClient('${conn.id}')">
+                    <i class="fas fa-times"></i> Disconnect
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function filterConnections(protocol) {
+    const rows = document.querySelectorAll('#active-connections-table tr[data-protocol]');
+    const buttons = document.querySelectorAll('.filter-btn');
+    
+    // Update button states
+    buttons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-filter') === protocol) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Filter rows
+    rows.forEach(row => {
+        if (protocol === 'all' || row.getAttribute('data-protocol') === protocol) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+async function disconnectClient(clientId) {
+    if (!confirm('Are you sure you want to disconnect this client?')) {
+        return;
+    }
+    
+    try {
+        const response = await apiFetch(`/api/system/connections/${clientId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showSystemAlert('success', 'Client disconnected successfully');
+            loadActiveConnections();
+        } else {
+            throw new Error('Failed to disconnect client');
+        }
+    } catch (error) {
+        console.error('Error disconnecting client:', error);
+        showSystemAlert('error', 'Failed to disconnect client: ' + error.message);
+    }
+}
+
+function showSystemAlert(type, message) {
+    const alertsContainer = document.getElementById('system-alerts');
+    if (!alertsContainer) return;
+    
+    // Remove placeholder if it exists
+    const placeholder = alertsContainer.querySelector('.alert-placeholder');
+    if (placeholder) {
+        placeholder.remove();
+    }
+    
+    const alertId = Date.now();
+    const now = new Date().toLocaleTimeString();
+    
+    const alertHtml = `
+        <div class="system-alert ${type}" id="alert-${alertId}">
+            <div class="alert-content">
+                <i class="fas fa-${getAlertIcon(type)}"></i>
+                <span>${message}</span>
+                <span class="alert-time">${now}</span>
+            </div>
+            <button class="alert-dismiss" onclick="dismissAlert('${alertId}')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    alertsContainer.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Auto-dismiss info and success alerts after 5 seconds
+    if (type === 'info' || type === 'success') {
+        setTimeout(() => dismissAlert(alertId), 5000);
+    }
+}
+
+function getAlertIcon(type) {
+    switch (type) {
+        case 'success': return 'check-circle';
+        case 'warning': return 'exclamation-triangle';
+        case 'error': return 'exclamation-circle';
+        case 'info':
+        default: return 'info-circle';
+    }
+}
+
+function dismissAlert(alertId) {
+    const alert = document.getElementById(`alert-${alertId}`);
+    if (alert) {
+        alert.style.transition = 'all 0.3s ease';
+        alert.style.opacity = '0';
+        alert.style.transform = 'translateX(100%)';
+        setTimeout(() => alert.remove(), 300);
+    }
+    
+    // Show placeholder if no alerts remain
+    const alertsContainer = document.getElementById('system-alerts');
+    if (alertsContainer && alertsContainer.children.length === 0) {
+        alertsContainer.innerHTML = `
+            <div class="alert-placeholder">
+                <i class="fas fa-check-circle text-success"></i>
+                <span>No active alerts - System running normally</span>
+            </div>
+        `;
+    }
+}
+
+function clearAllAlerts() {
+    const alertsContainer = document.getElementById('system-alerts');
+    if (alertsContainer) {
+        alertsContainer.innerHTML = `
+            <div class="alert-placeholder">
+                <i class="fas fa-check-circle text-success"></i>
+                <span>No active alerts - System running normally</span>
+            </div>
+        `;
+    }
+}
+
+// Initialize monitoring when the monitoring tab is loaded
+function initializeMonitoring() {
+    console.log('Initializing monitoring dashboard...');
+    
+    // Load initial data
+    refreshAllMetrics();
+    
+    // Start auto-refresh if enabled
+    if (autoRefreshEnabled) {
+        startMonitoringInterval();
+    }
+    
+    // Show welcome alert
+    setTimeout(() => {
+        showSystemAlert('info', 'Monitoring dashboard initialized');
+    }, 500);
+}
+
+// Stop monitoring when leaving the tab
+function cleanupMonitoring() {
+    stopMonitoringInterval();
 }
 
 // Fetch current authenticated user details
@@ -475,6 +845,11 @@ function switchTab(tabName) {
         loadUsers();
     } else if (tabName === 'openvpn') {
         loadOpenVPNClients();
+    } else if (tabName === 'monitoring') {
+        initializeMonitoring();
+    } else {
+        // Stop monitoring when switching away from monitoring tab
+        cleanupMonitoring();
     }
 }
 
@@ -563,6 +938,13 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Add peer form listener added');
     }
     
+    // Edit peer form listener
+    const editPeerForm = document.getElementById('edit-peer-form');
+    if (editPeerForm) {
+        editPeerForm.addEventListener('submit', handleEditPeer);
+        console.log('Edit peer form listener added');
+    }
+    
     // Add user form listener
     const addUserForm = document.getElementById('add-user-form');
     if (addUserForm) {
@@ -600,6 +982,59 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // Handle Edit User Form Submission
+    const editUserForm = document.getElementById('edit-user-form');
+    if (editUserForm) {
+        editUserForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const userId = document.getElementById('edit-user-id').value;
+            const formData = new FormData(editUserForm);
+            
+            // Get selected protocols
+            const protocols = [];
+            const protocolCheckboxes = document.querySelectorAll('input[name="edit-user-protocols"]:checked');
+            protocolCheckboxes.forEach(checkbox => {
+                protocols.push(checkbox.value);
+            });
+            
+            // Prepare update data
+            const updateData = {
+                username: formData.get('edit-user-username'),
+                email: formData.get('edit-user-email'),
+                role: formData.get('edit-user-role'),
+                status: formData.get('edit-user-status'),
+                protocols: protocols
+            };
+            
+            // Only include password if it's provided
+            const password = formData.get('edit-user-password');
+            if (password && password.trim() !== '') {
+                updateData.password = password;
+            }
+            
+            try {
+                const response = await apiFetch(`/api/users/${userId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(updateData)
+                });
+                
+                if (response.ok) {
+                    showToast('User updated successfully', 'success');
+                    closeEditUserModal();
+                    loadUsers(); // Refresh the user list
+                } else {
+                    const errorData = await response.json();
+                    showToast(errorData.detail || 'Failed to update user', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating user:', error);
+                showToast('Failed to update user', 'error');
+            }
+        });
+        console.log('Edit user form listener added');
+    }
+    
     console.log('Mobile navigation listeners added');
 });
 
@@ -620,6 +1055,43 @@ function showAddPeerModal() {
 function closeAddPeerModal() {
     console.log('Closing Add Peer modal');
     const modal = document.getElementById('add-peer-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Edit peer functionality
+async function editPeer(peerName) {
+    console.log('Edit peer called with peerName:', peerName);
+    
+    try {
+        console.log('Fetching peer data...');
+        // For now, we'll populate with the peer name and default values
+        // In a real implementation, you'd fetch the current peer configuration
+        
+        // Populate the edit form with peer data
+        document.getElementById('edit-peer-current-name').value = peerName;
+        document.getElementById('edit-peer-name').value = peerName;
+        document.getElementById('edit-peer-allowed-ips').value = '0.0.0.0/0';
+        
+        // Show the edit modal
+        const modal = document.getElementById('edit-peer-modal');
+        if (modal) {
+            modal.style.display = 'block';
+            console.log('Edit peer modal shown');
+        } else {
+            console.error('Edit peer modal not found');
+        }
+        
+    } catch (error) {
+        console.error('Error loading peer data:', error);
+        showToast('Failed to load peer data', 'error');
+    }
+}
+
+function closeEditPeerModal() {
+    console.log('Closing Edit Peer modal');
+    const modal = document.getElementById('edit-peer-modal');
     if (modal) {
         modal.style.display = 'none';
     }
@@ -660,6 +1132,32 @@ async function handleAddPeer(event) {
     }
 }
 
+async function handleEditPeer(event) {
+    event.preventDefault();
+    console.log('Editing WireGuard peer');
+    
+    const formData = new FormData(event.target);
+    const currentName = formData.get('current-name');
+    const newName = formData.get('peer-name');
+    const allowedIPs = formData.get('peer-allowed-ips') || "0.0.0.0/0";
+    
+    // For now, since we don't have a PUT endpoint, we'll show a message
+    // In a real implementation, you would call a PUT endpoint
+    try {
+        // TODO: Implement PUT /vpn/wireguard/peers/{peer_name} endpoint
+        showToast('Edit functionality will be implemented with API endpoint', 'info');
+        console.log('Edit peer data:', { currentName, newName, allowedIPs });
+        
+        closeEditPeerModal();
+        // In a real implementation, you would reload the peers table
+        // loadWireguardPeers();
+        
+    } catch (error) {
+        console.error('Error editing peer:', error);
+        showToast('Error editing peer', 'error');
+    }
+}
+
 async function loadWireguardPeers() {
     console.log('Loading WireGuard peers');
     try {
@@ -679,19 +1177,33 @@ async function loadWireguardPeers() {
                     tableBody.innerHTML = peers.map(peer => `
                         <tr>
                             <td>${peer.name}</td>
-                            <td>***...${peer.name.slice(-4)}</td>
+                            <td>
+                                <div class="config-value-container inline">
+                                    <span class="config-value masked" id="peer-key-${peer.name}" data-value="${peer.public_key || 'Not Available'}">••••••••••••••••••••••••••••••••••••••••••••••••••</span>
+                                    <button class="toggle-visibility-btn small" onclick="toggleConfigVisibility('peer-key-${peer.name}')" title="Show/Hide Key">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="copy-btn small" onclick="copyConfigValue('peer-key-${peer.name}')" title="Copy Key">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </td>
                             <td>${peer.ip}</td>
                             <td><span class="status-badge status-active">Active</span></td>
                             <td>
+                                <button class="btn btn-sm btn-secondary" onclick="console.log('Edit peer clicked for ${peer.name}'); editPeer('${peer.name}')">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
                                 <button class="btn btn-sm btn-secondary" onclick="downloadPeerConfig('${peer.name}')">
                                     <i class="fas fa-download"></i> Config
                                 </button>
-                                <button class="btn btn-sm btn-danger" onclick="deletePeer('${peer.name}')">
+                                <button class="btn btn-sm btn-danger" onclick="console.log('Delete peer clicked for ${peer.name}'); deletePeer('${peer.name}')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>
                             </td>
                         </tr>
                     `).join('');
+                    console.log('WireGuard peer table updated with', peers.length, 'peers. Check if edit/delete buttons work now.');
                 }
             }
         } else {
@@ -736,9 +1248,26 @@ async function downloadPeerConfig(peerName) {
 
 // Delete peer (placeholder - needs DELETE endpoint)
 async function deletePeer(peerName) {
-    if (confirm(`Are you sure you want to delete peer "${peerName}"?`)) {
-        showToast('Delete functionality not yet implemented', 'info');
-        // TODO: Implement DELETE /vpn/wireguard/peers/{peer_name} endpoint
+    if (!confirm(`Are you sure you want to delete peer "${peerName}"?\n\nThis action cannot be undone and will remove the peer configuration.`)) {
+        return;
+    }
+    
+    try {
+        console.log('Deleting peer:', peerName);
+        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast(`Peer "${peerName}" deleted successfully`, 'success');
+            loadWireguardPeers(); // Refresh the peer list
+        } else {
+            const error = await response.json();
+            showToast(`Failed to delete peer: ${error.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting peer:', error);
+        showToast('Failed to delete peer. Check console for details.', 'error');
     }
 }
 
@@ -846,15 +1375,16 @@ async function loadUsers() {
                             <td><span class="status-badge status-${user.is_active ? 'active' : 'inactive'}">${user.is_active ? 'Active' : 'Inactive'}</span></td>
                             <td>${new Date(user.created_at).toLocaleDateString()}</td>
                             <td>
-                                <button class="btn btn-sm btn-secondary" onclick="editUser(${user.id})">
+                                <button class="btn btn-sm btn-secondary" onclick="console.log('Edit button clicked for user ${user.id}'); editUser(${user.id})">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id}, '${user.username}')">
+                                <button class="btn btn-sm btn-danger" onclick="console.log('Delete button clicked for user ${user.id}'); deleteUser(${user.id}, '${user.username}')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>
                             </td>
                         </tr>
                     `).join('');
+                    console.log('User table updated with', users.length, 'users. Check if edit/delete buttons work now.');
                 }
             }
         } else {
@@ -873,17 +1403,93 @@ async function loadUsers() {
     }
 }
 
-// Edit user (placeholder)
-function editUser(userId) {
-    showToast('Edit user functionality not yet implemented', 'info');
-    // TODO: Implement edit user modal and functionality
+// Edit user functionality
+async function editUser(userId) {
+    console.log('Edit user called with userId:', userId);
+    
+    try {
+        console.log('Fetching user data...');
+        // First, fetch the user data
+        const response = await apiFetch(`/api/users/${userId}`);
+        
+        if (!response.ok) {
+            console.error('Failed to fetch user data, response status:', response.status);
+            showToast('Failed to fetch user data', 'error');
+            return;
+        }
+        
+        const user = await response.json();
+        console.log('User data received:', user);
+        
+        // Populate the edit form with user data
+        document.getElementById('edit-user-id').value = user.id;
+        document.getElementById('edit-user-username').value = user.username || '';
+        document.getElementById('edit-user-email').value = user.email || '';
+        document.getElementById('edit-user-password').value = ''; // Always empty for security
+        document.getElementById('edit-user-role').value = user.role || 'user';
+        document.getElementById('edit-user-status').value = user.status || 'active';
+        
+        // Handle protocols (assuming they're stored as an array or comma-separated string)
+        const protocolCheckboxes = document.querySelectorAll('input[name="edit-user-protocols"]');
+        protocolCheckboxes.forEach(checkbox => {
+            checkbox.checked = false; // Reset all
+        });
+        
+        if (user.protocols) {
+            const userProtocols = Array.isArray(user.protocols) 
+                ? user.protocols 
+                : user.protocols.split(',');
+            
+            userProtocols.forEach(protocol => {
+                const checkbox = document.querySelector(`input[name="edit-user-protocols"][value="${protocol.trim()}"]`);
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+            });
+        }
+        
+        console.log('Form populated, showing modal...');
+        // Show the modal
+        document.getElementById('edit-user-modal').style.display = 'flex';
+        
+    } catch (error) {
+        console.error('Error fetching user data:', error);
+        showToast('Failed to load user data for editing', 'error');
+    }
 }
 
-// Delete user (placeholder)
-function deleteUser(userId, username) {
-    if (confirm(`Are you sure you want to delete user "${username}"?`)) {
-        showToast('Delete user functionality not yet implemented', 'info');
-        // TODO: Implement DELETE /users/{user_id} endpoint
+// Close Edit User Modal
+function closeEditUserModal() {
+    document.getElementById('edit-user-modal').style.display = 'none';
+    
+    // Reset form
+    const form = document.getElementById('edit-user-form');
+    if (form) {
+        form.reset();
+    }
+}
+
+// Delete user functionality
+async function deleteUser(userId, username) {
+    if (!confirm(`Are you sure you want to delete user "${username}"?\n\nThis action cannot be undone and will remove all associated VPN configurations.`)) {
+        return;
+    }
+    
+    try {
+        const response = await apiFetch(`/api/users/${userId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast(`User "${username}" deleted successfully`, 'success');
+            loadUsers(); // Refresh the user list
+        } else {
+            const errorData = await response.json();
+            showToast(errorData.detail || 'Failed to delete user', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        showToast('Failed to delete user', 'error');
     }
 }
 
@@ -1339,6 +1945,78 @@ function copyText(elementId) {
     }
 }
 
+// Configuration visibility toggle functions
+function toggleConfigVisibility(elementId) {
+    const element = document.getElementById(elementId);
+    const toggleBtn = element.parentElement.querySelector('.toggle-visibility-btn i');
+    
+    if (!element || !toggleBtn) return;
+    
+    const isCurrentlyMasked = element.classList.contains('masked');
+    const realValue = element.getAttribute('data-value');
+    
+    if (isCurrentlyMasked) {
+        // Show real value
+        element.textContent = realValue;
+        element.classList.remove('masked');
+        toggleBtn.className = 'fas fa-eye-slash';
+        console.log(`Showing real value for ${elementId}`);
+    } else {
+        // Mask value
+        const maskedValue = generateMaskedValue(realValue);
+        element.textContent = maskedValue;
+        element.classList.add('masked');
+        toggleBtn.className = 'fas fa-eye';
+        console.log(`Masking value for ${elementId}`);
+    }
+}
+
+function copyConfigValue(elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    // Always copy the real value, even if it's currently masked
+    const realValue = element.getAttribute('data-value');
+    
+    const textarea = document.createElement('textarea');
+    textarea.value = realValue;
+    document.body.appendChild(textarea);
+    
+    try {
+        textarea.select();
+        document.execCommand('copy');
+        showToast('Configuration value copied to clipboard', 'success');
+        console.log(`Copied configuration value for ${elementId}`);
+    } catch (err) {
+        console.error('Failed to copy configuration value:', err);
+        showToast('Failed to copy configuration value', 'error');
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
+function generateMaskedValue(value) {
+    if (!value) return '';
+    
+    const length = value.length;
+    
+    if (length <= 3) {
+        // Very short values - mask completely
+        return '•'.repeat(length);
+    } else if (length <= 8) {
+        // Short values - show first character
+        return value.charAt(0) + '•'.repeat(length - 1);
+    } else if (length <= 20) {
+        // Medium values - show first few characters
+        const visibleChars = Math.ceil(length * 0.2);
+        return value.substring(0, visibleChars) + '•'.repeat(length - visibleChars);
+    } else {
+        // Long values - show first few characters and mask the rest
+        const visibleChars = Math.min(8, Math.ceil(length * 0.15));
+        return value.substring(0, visibleChars) + '•'.repeat(Math.min(40, length - visibleChars));
+    }
+}
+
 // Mobile Navigation Functions
 function toggleMobileMenu() {
     console.log('toggleMobileMenu called'); // Debug log
@@ -1388,11 +2066,260 @@ function handleOutsideClick(event) {
     }
 }
 
+// ========================================
+// UNINSTALL FUNCTIONALITY
+// ========================================
+
+// WireGuard Uninstall Functions
+function openRemovePeersModal() {
+    document.getElementById('remove-peers-modal').style.display = 'block';
+    document.getElementById('remove-peers-confirmation').value = '';
+    document.getElementById('confirm-remove-peers-btn').disabled = true;
+}
+
+function openUninstallWireguardModal() {
+    document.getElementById('uninstall-wireguard-modal').style.display = 'block';
+    document.getElementById('uninstall-wireguard-confirmation').value = '';
+    document.getElementById('confirm-uninstall-wireguard-btn').disabled = true;
+}
+
+function validateRemovePeersConfirmation() {
+    const input = document.getElementById('remove-peers-confirmation');
+    const btn = document.getElementById('confirm-remove-peers-btn');
+    btn.disabled = input.value !== 'REMOVE ALL';
+}
+
+function validateUninstallWireguardConfirmation() {
+    const input = document.getElementById('uninstall-wireguard-confirmation');
+    const btn = document.getElementById('confirm-uninstall-wireguard-btn');
+    btn.disabled = input.value !== 'UNINSTALL WIREGUARD';
+}
+
+async function removeAllWireguardPeers() {
+    try {
+        showToast('Removing all WireGuard peers...', 'warning');
+        const response = await apiFetch('/api/vpn/wireguard/clients', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast('All WireGuard peers removed successfully', 'success');
+            closeModal('remove-peers-modal');
+            loadWireguardPeers();
+        } else {
+            showToast(`Error removing peers: ${data.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error removing WireGuard peers:', error);
+        showToast('Failed to remove WireGuard peers', 'error');
+    }
+}
+
+async function uninstallWireguard() {
+    try {
+        showToast('Uninstalling WireGuard service...', 'warning');
+        const response = await apiFetch('/api/vpn/wireguard/uninstall', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast('WireGuard service uninstalled successfully', 'success');
+            closeModal('uninstall-wireguard-modal');
+            loadWireguardPeers();
+        } else {
+            showToast(`Error uninstalling WireGuard: ${data.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error uninstalling WireGuard:', error);
+        showToast('Failed to uninstall WireGuard service', 'error');
+    }
+}
+
+// OpenVPN Uninstall Functions
+function openRemoveOpenVPNClientsModal() {
+    document.getElementById('remove-openvpn-clients-modal').style.display = 'block';
+    document.getElementById('remove-openvpn-clients-confirmation').value = '';
+    document.getElementById('confirm-remove-openvpn-clients-btn').disabled = true;
+}
+
+function openUninstallOpenVPNModal() {
+    document.getElementById('uninstall-openvpn-modal').style.display = 'block';
+    document.getElementById('uninstall-openvpn-confirmation').value = '';
+    document.getElementById('confirm-uninstall-openvpn-btn').disabled = true;
+}
+
+function validateRemoveOpenVPNClientsConfirmation() {
+    const input = document.getElementById('remove-openvpn-clients-confirmation');
+    const btn = document.getElementById('confirm-remove-openvpn-clients-btn');
+    btn.disabled = input.value !== 'REMOVE ALL';
+}
+
+function validateUninstallOpenVPNConfirmation() {
+    const input = document.getElementById('uninstall-openvpn-confirmation');
+    const btn = document.getElementById('confirm-uninstall-openvpn-btn');
+    btn.disabled = input.value !== 'UNINSTALL OPENVPN';
+}
+
+async function removeAllOpenVPNClients() {
+    try {
+        showToast('Removing all OpenVPN clients...', 'warning');
+        const response = await apiFetch('/api/vpn/openvpn/clients', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast('All OpenVPN clients removed successfully', 'success');
+            closeModal('remove-openvpn-clients-modal');
+            loadOpenVPNClients();
+        } else {
+            showToast(`Error removing clients: ${data.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error removing OpenVPN clients:', error);
+        showToast('Failed to remove OpenVPN clients', 'error');
+    }
+}
+
+async function uninstallOpenVPN() {
+    try {
+        showToast('Uninstalling OpenVPN service...', 'warning');
+        const response = await apiFetch('/api/vpn/openvpn/uninstall', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast('OpenVPN service uninstalled successfully', 'success');
+            closeModal('uninstall-openvpn-modal');
+            loadOpenVPNClients();
+        } else {
+            showToast(`Error uninstalling OpenVPN: ${data.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error uninstalling OpenVPN:', error);
+        showToast('Failed to uninstall OpenVPN service', 'error');
+    }
+}
+
+// IKEv2 Uninstall Functions
+function openRemoveIKEv2ClientsModal() {
+    document.getElementById('remove-ikev2-clients-modal').style.display = 'block';
+    document.getElementById('remove-ikev2-clients-confirmation').value = '';
+    document.getElementById('confirm-remove-ikev2-clients-btn').disabled = true;
+}
+
+function openUninstallIKEv2Modal() {
+    document.getElementById('uninstall-ikev2-modal').style.display = 'block';
+    document.getElementById('uninstall-ikev2-confirmation').value = '';
+    document.getElementById('confirm-uninstall-ikev2-btn').disabled = true;
+}
+
+function validateRemoveIKEv2ClientsConfirmation() {
+    const input = document.getElementById('remove-ikev2-clients-confirmation');
+    const btn = document.getElementById('confirm-remove-ikev2-clients-btn');
+    btn.disabled = input.value !== 'REMOVE ALL';
+}
+
+function validateUninstallIKEv2Confirmation() {
+    const input = document.getElementById('uninstall-ikev2-confirmation');
+    const btn = document.getElementById('confirm-uninstall-ikev2-btn');
+    btn.disabled = input.value !== 'UNINSTALL IKEV2';
+}
+
+async function removeAllIKEv2Clients() {
+    try {
+        showToast('Removing all IKEv2 clients...', 'warning');
+        const response = await apiFetch('/api/vpn/ikev2/clients', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast('All IKEv2 clients removed successfully', 'success');
+            closeModal('remove-ikev2-clients-modal');
+            loadIKEv2Users();
+        } else {
+            showToast(`Error removing clients: ${data.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error removing IKEv2 clients:', error);
+        showToast('Failed to remove IKEv2 clients', 'error');
+    }
+}
+
+async function uninstallIKEv2() {
+    try {
+        showToast('Uninstalling IKEv2 service...', 'warning');
+        const response = await apiFetch('/api/vpn/ikev2/uninstall', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast('IKEv2 service uninstalled successfully', 'success');
+            closeModal('uninstall-ikev2-modal');
+            loadIKEv2Users();
+        } else {
+            showToast(`Error uninstalling IKEv2: ${data.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error uninstalling IKEv2:', error);
+        showToast('Failed to uninstall IKEv2 service', 'error');
+    }
+}
+
+// Helper function to close modals
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+// Refresh tab functions  
+function refreshWireguardTab() {
+    if (document.getElementById('wireguard').style.display === 'block') {
+        loadWireguardPeers();
+    }
+}
+
+function refreshOpenVpnTab() {
+    if (document.getElementById('openvpn').style.display === 'block') {
+        loadOpenVPNClients();
+    }
+}
+
+function refreshIkev2Tab() {
+    if (document.getElementById('ikev2').style.display === 'block') {
+        loadIKEv2Users();
+    }
+}
+
 // Export functions for global access
 window.switchTab = switchTab;
 window.handleLogout = handleLogout;
 window.showAddPeerModal = showAddPeerModal;
 window.closeAddPeerModal = closeAddPeerModal;
+window.editPeer = editPeer;
+window.closeEditPeerModal = closeEditPeerModal;
 window.downloadPeerConfig = downloadPeerConfig;
 window.deletePeer = deletePeer;
 window.showAddUserModal = showAddUserModal;
@@ -1413,5 +2340,28 @@ window.showIKEv2OSInstructions = showIKEv2OSInstructions;
 window.showIKEv2LinuxDistro = showIKEv2LinuxDistro;
 window.copyServerIP = copyServerIP;
 window.copyText = copyText;
+window.toggleConfigVisibility = toggleConfigVisibility;
+window.copyConfigValue = copyConfigValue;
 window.toggleMobileMenu = toggleMobileMenu;
 window.closeMobileMenu = closeMobileMenu;
+
+// Uninstall function exports
+window.openRemovePeersModal = openRemovePeersModal;
+window.openUninstallWireguardModal = openUninstallWireguardModal;
+window.validateRemovePeersConfirmation = validateRemovePeersConfirmation;
+window.validateUninstallWireguardConfirmation = validateUninstallWireguardConfirmation;
+window.removeAllWireguardPeers = removeAllWireguardPeers;
+window.uninstallWireguard = uninstallWireguard;
+window.openRemoveOpenVPNClientsModal = openRemoveOpenVPNClientsModal;
+window.openUninstallOpenVPNModal = openUninstallOpenVPNModal;
+window.validateRemoveOpenVPNClientsConfirmation = validateRemoveOpenVPNClientsConfirmation;
+window.validateUninstallOpenVPNConfirmation = validateUninstallOpenVPNConfirmation;
+window.removeAllOpenVPNClients = removeAllOpenVPNClients;
+window.uninstallOpenVPN = uninstallOpenVPN;
+window.openRemoveIKEv2ClientsModal = openRemoveIKEv2ClientsModal;
+window.openUninstallIKEv2Modal = openUninstallIKEv2Modal;
+window.validateRemoveIKEv2ClientsConfirmation = validateRemoveIKEv2ClientsConfirmation;
+window.validateUninstallIKEv2Confirmation = validateUninstallIKEv2Confirmation;
+window.removeAllIKEv2Clients = removeAllIKEv2Clients;
+window.uninstallIKEv2 = uninstallIKEv2;
+window.closeModal = closeModal;

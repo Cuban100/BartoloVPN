@@ -57,6 +57,15 @@ class UserCreate(BaseModel):
     role: str = "user"
     protocols: List[str] = ["wireguard"]
 
+class UserUpdate(BaseModel):
+    """User update model"""
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    password: Optional[str] = Field(None, min_length=6)
+    email: Optional[str] = None
+    role: Optional[str] = None
+    protocols: Optional[List[str]] = None
+    status: Optional[str] = None
+
 class UserResponse(BaseModel):
     """User response model"""
     id: int
@@ -336,6 +345,71 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -
         buffer.seek(0)
         return base64.b64encode(buffer.getvalue()).decode()
     
+    async def delete_wireguard_peer(self, peer_name: str) -> Dict[str, str]:
+        """Delete WireGuard peer"""
+        try:
+            # Remove peer configuration file
+            peer_config_file = f"{settings.wireguard_config_path}/peers/{peer_name}.conf"
+            if os.path.exists(peer_config_file):
+                os.remove(peer_config_file)
+            
+            # Remove peer from server configuration
+            server_config = f"{settings.wireguard_config_path}/wg0.conf"
+            if os.path.exists(server_config):
+                await self._remove_wireguard_peer_from_server(peer_name, server_config)
+            
+            # Remove from database
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(VPNConfig).where(
+                        VPNConfig.config_name == peer_name,
+                        VPNConfig.protocol == "wireguard"
+                    )
+                )
+                vpn_config = result.scalar_one_or_none()
+                if vpn_config:
+                    await session.delete(vpn_config)
+                    await session.commit()
+            
+            return {"message": f"Peer {peer_name} deleted successfully"}
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete peer: {str(e)}")
+    
+    async def _remove_wireguard_peer_from_server(self, peer_name: str, server_config: str):
+        """Remove peer from WireGuard server configuration"""
+        with open(server_config, 'r') as f:
+            lines = f.readlines()
+        
+        # Remove peer section
+        new_lines = []
+        skip_section = False
+        for line in lines:
+            if line.strip() == f"# {peer_name}":
+                skip_section = True
+                continue
+            elif skip_section and line.startswith('[Peer]'):
+                continue
+            elif skip_section and (line.startswith('PublicKey =') or 
+                                   line.startswith('AllowedIPs =') or 
+                                   line.strip() == ''):
+                continue
+            elif skip_section and line.startswith('['):
+                skip_section = False
+                new_lines.append(line)
+            elif not skip_section:
+                new_lines.append(line)
+        
+        # Write updated configuration
+        with open(server_config, 'w') as f:
+            f.writelines(new_lines)
+        
+        # Reload WireGuard configuration
+        try:
+            await asyncio.create_subprocess_exec('wg', 'syncconf', 'wg0', server_config)
+        except:
+            pass  # WireGuard might not be running
+
     async def get_system_stats(self) -> SystemStats:
         """Get system statistics"""
         try:
@@ -533,6 +607,322 @@ key-direction 1
         except Exception as e:
             logger.error(f"Error creating OpenVPN client: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to create OpenVPN client: {str(e)}")
+
+    # ========== UNINSTALL METHODS ==========
+    
+    async def delete_openvpn_client(self, client_name: str) -> Dict[str, Any]:
+        """Delete an OpenVPN client"""
+        try:
+            logger.info(f"Deleting OpenVPN client: {client_name}")
+            
+            # Remove client configuration file
+            client_config_path = f"{settings.openvpn_config_path}/clients/{client_name}.ovpn"
+            if os.path.exists(client_config_path):
+                os.remove(client_config_path)
+            
+            # Remove client certificate and key files
+            pki_dir = f"{settings.openvpn_config_path}/pki"
+            client_cert_path = f"{pki_dir}/issued/{client_name}.crt"
+            client_key_path = f"{pki_dir}/private/{client_name}.key"
+            client_req_path = f"{pki_dir}/reqs/{client_name}.req"
+            
+            for path in [client_cert_path, client_key_path, client_req_path]:
+                if os.path.exists(path):
+                    os.remove(path)
+            
+            # Revoke certificate if using EasyRSA
+            try:
+                revoke_script = f"""
+cd {settings.openvpn_config_path}
+if [ -f ./easyrsa ]; then
+    export EASYRSA_BATCH="1"
+    ./easyrsa revoke {client_name}
+    ./easyrsa gen-crl
+fi
+"""
+                process = await asyncio.create_subprocess_shell(
+                    revoke_script,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode != 0:
+                    logger.warning(f"Failed to revoke certificate: {stderr.decode()}")
+            
+            except Exception as e:
+                logger.warning(f"Certificate revocation failed: {e}")
+            
+            return {"message": f"OpenVPN client {client_name} deleted successfully"}
+            
+        except Exception as e:
+            logger.error(f"Error deleting OpenVPN client: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")
+
+    async def uninstall_wireguard(self) -> Dict[str, Any]:
+        """Completely uninstall WireGuard service"""
+        try:
+            logger.info("Starting WireGuard uninstallation")
+            
+            # Stop WireGuard service
+            try:
+                stop_process = await asyncio.create_subprocess_exec(
+                    'docker', 'stop', 'bartolo-wireguard',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await stop_process.communicate()
+            except:
+                pass
+            
+            # Remove container
+            try:
+                rm_process = await asyncio.create_subprocess_exec(
+                    'docker', 'rm', 'bartolo-wireguard',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await rm_process.communicate()
+            except:
+                pass
+            
+            # Remove configuration directory
+            import shutil
+            config_dir = settings.wireguard_config_path
+            if os.path.exists(config_dir):
+                shutil.rmtree(config_dir)
+                logger.info(f"Removed WireGuard config directory: {config_dir}")
+            
+            return {
+                "message": "WireGuard service uninstalled successfully",
+                "removed_configs": True,
+                "stopped_service": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error uninstalling WireGuard: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to uninstall WireGuard: {str(e)}")
+
+    async def uninstall_openvpn(self) -> Dict[str, Any]:
+        """Completely uninstall OpenVPN service"""
+        try:
+            logger.info("Starting OpenVPN uninstallation")
+            
+            # Stop OpenVPN service
+            try:
+                stop_process = await asyncio.create_subprocess_exec(
+                    'docker', 'stop', 'bartolo-openvpn',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await stop_process.communicate()
+            except:
+                pass
+            
+            # Remove container
+            try:
+                rm_process = await asyncio.create_subprocess_exec(
+                    'docker', 'rm', 'bartolo-openvpn',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await rm_process.communicate()
+            except:
+                pass
+            
+            # Remove configuration directory
+            import shutil
+            config_dir = settings.openvpn_config_path
+            if os.path.exists(config_dir):
+                shutil.rmtree(config_dir)
+                logger.info(f"Removed OpenVPN config directory: {config_dir}")
+            
+            return {
+                "message": "OpenVPN service uninstalled successfully",
+                "removed_configs": True,
+                "stopped_service": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error uninstalling OpenVPN: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to uninstall OpenVPN: {str(e)}")
+
+    async def uninstall_ikev2(self) -> Dict[str, Any]:
+        """Completely uninstall IKEv2 service"""
+        try:
+            logger.info("Starting IKEv2 uninstallation")
+            
+            # Stop IKEv2 service
+            try:
+                stop_process = await asyncio.create_subprocess_exec(
+                    'docker', 'stop', 'bartolo-ikev2',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await stop_process.communicate()
+            except:
+                pass
+            
+            # Remove container
+            try:
+                rm_process = await asyncio.create_subprocess_exec(
+                    'docker', 'rm', 'bartolo-ikev2',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await rm_process.communicate()
+            except:
+                pass
+            
+            # Remove configuration directory
+            import shutil
+            config_dir = settings.ikev2_config_path
+            if os.path.exists(config_dir):
+                shutil.rmtree(config_dir)
+                logger.info(f"Removed IKEv2 config directory: {config_dir}")
+            
+            return {
+                "message": "IKEv2 service uninstalled successfully",
+                "removed_configs": True,
+                "stopped_service": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error uninstalling IKEv2: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to uninstall IKEv2: {str(e)}")
+
+    async def remove_all_wireguard_peers(self) -> Dict[str, Any]:
+        """Remove all WireGuard peers"""
+        try:
+            logger.info("Removing all WireGuard peers")
+            
+            peers_removed = 0
+            peers_dir = f"{settings.wireguard_config_path}/peers"
+            
+            if os.path.exists(peers_dir):
+                for filename in os.listdir(peers_dir):
+                    if filename.endswith('.conf'):
+                        peer_path = os.path.join(peers_dir, filename)
+                        os.remove(peer_path)
+                        peers_removed += 1
+                        logger.info(f"Removed peer config: {filename}")
+            
+            # Reset server configuration to remove all peer entries
+            server_config_path = f"{settings.wireguard_config_path}/wg_confs/wg0.conf"
+            if os.path.exists(server_config_path):
+                # Read current config and keep only [Interface] section
+                with open(server_config_path, 'r') as f:
+                    lines = f.readlines()
+                
+                # Write back only the [Interface] section
+                with open(server_config_path, 'w') as f:
+                    in_interface = False
+                    for line in lines:
+                        if line.strip() == '[Interface]':
+                            in_interface = True
+                            f.write(line)
+                        elif line.startswith('[') and line.strip() != '[Interface]':
+                            break
+                        elif in_interface:
+                            f.write(line)
+            
+            return {
+                "message": f"Removed {peers_removed} WireGuard peers successfully",
+                "peers_removed": peers_removed,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error removing all WireGuard peers: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to remove peers: {str(e)}")
+
+    async def remove_all_openvpn_clients(self) -> Dict[str, Any]:
+        """Remove all OpenVPN clients"""
+        try:
+            logger.info("Removing all OpenVPN clients")
+            
+            clients_removed = 0
+            clients_dir = f"{settings.openvpn_config_path}/clients"
+            
+            if os.path.exists(clients_dir):
+                for filename in os.listdir(clients_dir):
+                    if filename.endswith('.ovpn'):
+                        client_path = os.path.join(clients_dir, filename)
+                        os.remove(client_path)
+                        clients_removed += 1
+                        logger.info(f"Removed client config: {filename}")
+            
+            # Remove all client certificates and keys
+            pki_dir = f"{settings.openvpn_config_path}/pki"
+            if os.path.exists(pki_dir):
+                # Clear issued certificates (except CA)
+                issued_dir = f"{pki_dir}/issued"
+                if os.path.exists(issued_dir):
+                    for filename in os.listdir(issued_dir):
+                        if filename != "ca.crt" and filename.endswith('.crt'):
+                            cert_path = os.path.join(issued_dir, filename)
+                            os.remove(cert_path)
+                
+                # Clear private keys (except CA)
+                private_dir = f"{pki_dir}/private"
+                if os.path.exists(private_dir):
+                    for filename in os.listdir(private_dir):
+                        if filename != "ca.key" and filename.endswith('.key'):
+                            key_path = os.path.join(private_dir, filename)
+                            os.remove(key_path)
+                
+                # Clear certificate requests
+                reqs_dir = f"{pki_dir}/reqs"
+                if os.path.exists(reqs_dir):
+                    for filename in os.listdir(reqs_dir):
+                        if filename.endswith('.req'):
+                            req_path = os.path.join(reqs_dir, filename)
+                            os.remove(req_path)
+            
+            return {
+                "message": f"Removed {clients_removed} OpenVPN clients successfully",
+                "clients_removed": clients_removed,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error removing all OpenVPN clients: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to remove clients: {str(e)}")
+
+    async def remove_all_ikev2_clients(self) -> Dict[str, Any]:
+        """Remove all IKEv2 clients"""
+        try:
+            logger.info("Removing all IKEv2 clients")
+            
+            # For IKEv2, clients are typically managed through the strongSwan configuration
+            # This is a simplified implementation - in a real setup, you'd manage the ipsec.conf and ipsec.secrets files
+            
+            clients_removed = 0
+            config_dir = settings.ikev2_config_path
+            
+            if os.path.exists(config_dir):
+                # Remove client-specific configuration files if they exist
+                for filename in os.listdir(config_dir):
+                    if "client" in filename.lower() or "user" in filename.lower():
+                        client_path = os.path.join(config_dir, filename)
+                        if os.path.isfile(client_path):
+                            os.remove(client_path)
+                            clients_removed += 1
+                            logger.info(f"Removed IKEv2 client config: {filename}")
+            
+            return {
+                "message": f"Removed {clients_removed} IKEv2 client configurations successfully",
+                "clients_removed": clients_removed,
+                "note": "IKEv2 client management depends on strongSwan configuration",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error removing all IKEv2 clients: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to remove clients: {str(e)}")
 
 # Initialize VPN manager
 vpn_manager = VPNManager()
@@ -1034,6 +1424,97 @@ async def create_user(user: UserCreate, current_user: dict = Depends(get_current
         is_active=bool(getattr(new_user, "is_active"))
     )
 
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+async def get_user(user_id: int, current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Get a specific user by ID"""
+    if current_user["role"] != "admin" and current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return UserResponse(
+        id=int(getattr(user, "id")),
+        username=str(getattr(user, "username")),
+        email=getattr(user, "email"),
+        role=str(getattr(user, "role")),
+        protocols=["wireguard"],  # TODO: Get actual protocols from user data
+        created_at=getattr(user, "created_at"),
+        last_login=getattr(user, "last_login"),
+        is_active=bool(getattr(user, "is_active"))
+    )
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+async def update_user(user_id: int, user_update: UserUpdate, current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Update a specific user"""
+    if current_user["role"] != "admin" and current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if username is being changed and if it already exists
+    if user_update.username and user_update.username != user.username:
+        existing = await db.execute(select(User).where(User.username == user_update.username))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Username already exists")
+        setattr(user, "username", user_update.username)
+    
+    # Update other fields if provided
+    if user_update.email is not None:
+        setattr(user, "email", user_update.email)
+    
+    if user_update.password:
+        setattr(user, "hashed_password", get_password_hash(user_update.password))
+    
+    if user_update.role:
+        setattr(user, "role", user_update.role)
+    
+    if user_update.status:
+        setattr(user, "is_active", user_update.status == "active")
+    
+    # TODO: Handle protocols update when user protocol support is implemented
+    
+    await db.commit()
+    await db.refresh(user)
+    
+    return UserResponse(
+        id=int(getattr(user, "id")),
+        username=str(getattr(user, "username")),
+        email=getattr(user, "email"),
+        role=str(getattr(user, "role")),
+        protocols=user_update.protocols or ["wireguard"],
+        created_at=getattr(user, "created_at"),
+        last_login=getattr(user, "last_login"),
+        is_active=bool(getattr(user, "is_active"))
+    )
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: int, current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Delete a specific user"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized - admin only")
+    
+    if current_user["id"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await db.delete(user)
+    await db.commit()
+    
+    return {"message": f"User {user.username} deleted successfully"}
+
 # VPN Management Routes
 @app.get("/vpn/wireguard/status")
 async def get_wireguard_status(current_user: dict = Depends(get_current_user)):
@@ -1100,6 +1581,20 @@ async def download_wireguard_config(
     
     return FileResponse(config_file, filename=f"{peer_name}.conf")
 
+@app.delete("/vpn/wireguard/peers/{peer_name}")
+async def delete_wireguard_peer(
+    peer_name: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete WireGuard peer"""
+    # Only admin can delete any peer, users can only delete their own
+    if current_user["role"] != "admin":
+        # TODO: Check if this peer belongs to the current user
+        # For now, only admin can delete
+        raise HTTPException(status_code=403, detail="Only admin can delete peers")
+    
+    return await vpn_manager.delete_wireguard_peer(peer_name)
+
 # OpenVPN Management Routes
 @app.get("/vpn/openvpn/status")
 async def get_openvpn_status(current_user: dict = Depends(get_current_user)):
@@ -1155,13 +1650,92 @@ async def download_openvpn_config(
     
     return FileResponse(config_file, filename=f"{client_name}.ovpn")
 
+@app.delete("/vpn/openvpn/clients/{client_name}")
+async def delete_openvpn_client(
+    client_name: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete OpenVPN client"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete clients")
+    
+    return await vpn_manager.delete_openvpn_client(client_name)
+
+# Uninstall Endpoints for All Protocols
+@app.post("/vpn/wireguard/uninstall")
+async def uninstall_wireguard(
+    current_user: dict = Depends(get_current_user)
+):
+    """Completely uninstall WireGuard service and remove all configurations"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can uninstall services")
+    
+    return await vpn_manager.uninstall_wireguard()
+
+@app.post("/vpn/openvpn/uninstall")
+async def uninstall_openvpn(
+    current_user: dict = Depends(get_current_user)
+):
+    """Completely uninstall OpenVPN service and remove all configurations"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can uninstall services")
+    
+    return await vpn_manager.uninstall_openvpn()
+
+@app.post("/vpn/ikev2/uninstall")
+async def uninstall_ikev2(
+    current_user: dict = Depends(get_current_user)
+):
+    """Completely uninstall IKEv2 service and remove all configurations"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can uninstall services")
+    
+    return await vpn_manager.uninstall_ikev2()
+
+@app.delete("/vpn/wireguard/clients/all")
+async def remove_all_wireguard_peers(
+    current_user: dict = Depends(get_current_user)
+):
+    """Remove all WireGuard peers"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove all peers")
+    
+    return await vpn_manager.remove_all_wireguard_peers()
+
+@app.delete("/vpn/openvpn/clients/all")
+async def remove_all_openvpn_clients(
+    current_user: dict = Depends(get_current_user)
+):
+    """Remove all OpenVPN clients"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove all clients")
+    
+    return await vpn_manager.remove_all_openvpn_clients()
+
+@app.delete("/vpn/ikev2/clients/all")
+async def remove_all_ikev2_clients(
+    current_user: dict = Depends(get_current_user)
+):
+    """Remove all IKEv2 clients"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove all clients")
+    
+    return await vpn_manager.remove_all_ikev2_clients()
+
 @app.get("/api/system/stats")
-async def get_system_stats(current_user: dict = Depends(get_current_user)):
+async def get_system_stats(current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get system statistics"""
     logger.info(f"System stats requested by user: {current_user.get('username', 'unknown')}")
     
     # Get basic system stats
     stats = await vpn_manager.get_system_stats()
+    
+    # Get user counts from database
+    total_users_result = await db.execute(select(User))
+    total_users = len(list(total_users_result.scalars().all()))
+    
+    active_users_result = await db.execute(select(User).where(User.is_active == True))
+    active_users = len(list(active_users_result.scalars().all()))
     
     # Create the response structure expected by frontend
     response = {
@@ -1177,8 +1751,8 @@ async def get_system_stats(current_user: dict = Depends(get_current_user)):
             "ikev2": {"status": "running"}       # TODO: Add real status check
         },
         "users": {
-            "active": 0,  # TODO: Add real active user count
-            "total": 1    # At least current user
+            "active": active_users,
+            "total": total_users
         },
         "bandwidth": {
             "sent": stats.network_bytes_sent,

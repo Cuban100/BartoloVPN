@@ -2,6 +2,8 @@
 
 **Multi-Protocol VPN Server with Web Management Interface**
 
+![Login Demo](web/static/img/docs/login-demo.png)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Do## 🔒 Security Features
 
