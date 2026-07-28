@@ -99,6 +99,15 @@ class ServerEndpoint(Base):
     last_used = Column(DateTime, nullable=True)
     usage_count = Column(Integer, default=0)
 
+class DnsQueryLog(Base):
+    """DNS query activity per WireGuard peer (domain-level browsing visibility)"""
+    __tablename__ = "dns_query_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    peer_ip = Column(String(45), nullable=False, index=True)
+    domain = Column(String(255), nullable=False, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
 class IPRotation(Base):
     """IP rotation configuration"""
     __tablename__ = "ip_rotations"

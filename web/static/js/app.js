@@ -5,6 +5,14 @@ let currentUser = null;
 let isLoggedIn = false;
 let toastsContainer = null;
 
+// Basic HTML escaping for values rendered via innerHTML (e.g. DNS domain
+// names, which come from DNS queries and shouldn't be trusted verbatim)
+function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+}
+
 // Toast notifications
 function showToast(message, type = 'info', timeout = 3000) {
     if (!toastsContainer) {
@@ -847,6 +855,8 @@ function switchTab(tabName) {
         loadOpenVPNClients();
     } else if (tabName === 'monitoring') {
         initializeMonitoring();
+    } else if (tabName === 'activity') {
+        loadDnsActivity();
     } else {
         // Stop monitoring when switching away from monitoring tab
         cleanupMonitoring();
@@ -1122,6 +1132,11 @@ async function handleAddPeer(event) {
             event.target.reset();
             // Reload peers table
             loadWireguardPeers();
+            // Show the QR code right away so it can be scanned with the
+            // WireGuard mobile app (iOS/Android)
+            if (result.qr_code) {
+                showPeerQrModal(result.qr_code, result.peer_name);
+            }
         } else {
             const error = await response.json();
             showToast(error.detail || 'Failed to add peer', 'error');
@@ -1129,6 +1144,41 @@ async function handleAddPeer(event) {
     } catch (error) {
         console.error('Error adding peer:', error);
         showToast('Error adding peer', 'error');
+    }
+}
+
+// Show the QR-code modal for a given base64-encoded PNG
+function showPeerQrModal(qrCodeBase64, peerName) {
+    const modal = document.getElementById('peer-qr-modal');
+    const img = document.getElementById('peer-qr-image');
+    const nameEl = document.getElementById('peer-qr-name');
+    if (!modal || !img) {
+        console.error('QR modal not found');
+        return;
+    }
+    img.src = `data:image/png;base64,${qrCodeBase64}`;
+    if (nameEl) nameEl.textContent = peerName || '';
+    modal.style.display = 'flex';
+}
+
+function closePeerQrModal() {
+    const modal = document.getElementById('peer-qr-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+// Fetch and show the QR code for an already-existing peer
+async function showPeerQr(peerName) {
+    try {
+        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}/qrcode`);
+        if (response.ok) {
+            const data = await response.json();
+            showPeerQrModal(data.qr_code, data.peer_name);
+        } else {
+            showToast('Failed to load QR code', 'error');
+        }
+    } catch (error) {
+        console.error('Error loading QR code:', error);
+        showToast('Error loading QR code', 'error');
     }
 }
 
@@ -1197,6 +1247,9 @@ async function loadWireguardPeers() {
                                 <button class="btn btn-sm btn-secondary" onclick="downloadPeerConfig('${peer.name}')">
                                     <i class="fas fa-download"></i> Config
                                 </button>
+                                <button class="btn btn-sm btn-secondary" onclick="showPeerQr('${peer.name}')">
+                                    <i class="fas fa-qrcode"></i> QR
+                                </button>
                                 <button class="btn btn-sm btn-danger" onclick="console.log('Delete peer clicked for ${peer.name}'); deletePeer('${peer.name}')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>
@@ -1219,6 +1272,62 @@ async function loadWireguardPeers() {
         }
     } catch (error) {
         console.error('Error loading peers:', error);
+    }
+}
+
+// Load and render the DNS/domain Activity tab
+async function loadDnsActivity() {
+    console.log('Loading DNS activity');
+    const tableBody = document.getElementById('dns-activity-table');
+    const peerFilter = document.getElementById('activity-peer-filter');
+    const selectedPeerIp = peerFilter ? peerFilter.value : '';
+
+    try {
+        const url = selectedPeerIp
+            ? `/api/dns/queries?peer_ip=${encodeURIComponent(selectedPeerIp)}`
+            : '/api/dns/queries';
+        const response = await apiFetch(url);
+        if (!response.ok) {
+            if (tableBody) {
+                tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Failed to load activity</td></tr>';
+            }
+            return;
+        }
+        const data = await response.json();
+        const queries = data.queries || [];
+
+        // Populate the peer filter dropdown with peers seen in the results,
+        // without wiping out the user's current selection
+        if (peerFilter) {
+            const seen = new Map();
+            queries.forEach(q => seen.set(q.peer_ip, q.peer_name));
+            const currentValue = peerFilter.value;
+            peerFilter.innerHTML = '<option value="">All peers</option>' +
+                Array.from(seen.entries()).map(([ip, name]) =>
+                    `<option value="${escapeHtml(ip)}">${escapeHtml(name)}</option>`
+                ).join('');
+            peerFilter.value = currentValue;
+        }
+
+        if (!tableBody) return;
+
+        if (queries.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center">No DNS activity recorded yet</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = queries.map(q => `
+            <tr>
+                <td>${escapeHtml(new Date(q.timestamp + 'Z').toLocaleString())}</td>
+                <td>${escapeHtml(q.peer_name)}</td>
+                <td>${escapeHtml(q.domain)}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading DNS activity:', error);
+        if (tableBody) {
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading activity</td></tr>';
+        }
     }
 }
 

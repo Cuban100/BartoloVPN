@@ -530,6 +530,26 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
     </div>
 </div>
 
+<!-- Peer QR Code Modal -->
+<div id="peer-qr-modal" class="modal-overlay" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3><i class="fas fa-qrcode"></i> Scan with WireGuard App</h3>
+            <button class="modal-close" onclick="closePeerQrModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="text-align: center;">
+            <p id="peer-qr-name" style="margin-bottom: 1rem; font-weight: 600;"></p>
+            <img id="peer-qr-image" src="" alt="WireGuard peer QR code" style="max-width: 280px; width: 100%; background: #fff; padding: 12px; border-radius: 8px;">
+            <p class="form-help" style="margin-top: 1rem;">
+                Open the WireGuard app on iPhone/Android &rarr; tap "+" &rarr; "Scan from QR code" &rarr; point at this image.
+            </p>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closePeerQrModal()">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Remove All Peers Modal -->
 <div id="remove-all-peers-modal" class="modal-overlay" style="display: none;">
     <div class="modal modal-danger">

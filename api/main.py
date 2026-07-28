@@ -131,10 +131,11 @@ security = HTTPBearer()
 
 # Import database models
 from database import (
-    User, VPNConfig, UserSession, UsageLog, ServerEndpoint, IPRotation,
+    User, VPNConfig, UserSession, UsageLog, ServerEndpoint, IPRotation, DnsQueryLog,
     AsyncSessionLocal, init_db, create_default_admin, create_default_endpoints, get_db
 )
 from ip_rotation import ip_rotation_service
+from dns_activity import dns_activity_poller
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -173,12 +174,12 @@ class VPNManager:
         """Get WireGuard connection status"""
         try:
             result = await asyncio.create_subprocess_exec(
-                'wg', 'show',
+                'wg', 'show', 'wg0',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await result.communicate()
-            
+
             if result.returncode == 0:
                 connections = len([line for line in stdout.decode().split('\n') if 'peer:' in line])
                 return VPNStatus(
@@ -245,7 +246,7 @@ class VPNManager:
             peer_config = f"""[Interface]
 PrivateKey = {private_key}
 Address = 10.13.13.{peer_ip}/24
-DNS = {settings.dns_servers}
+DNS = 10.13.13.1
 
 [Peer]
 PublicKey = {server_public_key}
@@ -279,28 +280,48 @@ PersistentKeepalive = 25
             raise HTTPException(status_code=500, detail=f"Failed to create WireGuard peer: {str(e)}")
     
     async def _get_next_peer_ip(self) -> int:
-        """Get next available IP for peer"""
-        peers_dir = f"{settings.wireguard_config_path}/peers"
-        if not os.path.exists(peers_dir):
-            return 2
-        
+        """Get next available IP for peer, avoiding collisions with both
+        app-managed peer files and peers already registered on the live interface
+        (e.g. the container's own auto-provisioned PEERS)"""
         existing_ips = []
-        for file in os.listdir(peers_dir):
-            if file.endswith('.conf'):
-                with open(os.path.join(peers_dir, file), 'r') as f:
-                    content = f.read()
-                    if 'Address = 10.13.13.' in content:
-                        ip = content.split('Address = 10.13.13.')[1].split('/')[0]
-                        existing_ips.append(int(ip))
-        
+
+        peers_dir = f"{settings.wireguard_config_path}/peers"
+        if os.path.exists(peers_dir):
+            for file in os.listdir(peers_dir):
+                if file.endswith('.conf'):
+                    with open(os.path.join(peers_dir, file), 'r') as f:
+                        content = f.read()
+                        if 'Address = 10.13.13.' in content:
+                            ip = content.split('Address = 10.13.13.')[1].split('/')[0].strip()
+                            existing_ips.append(int(ip))
+
+        try:
+            result = await asyncio.create_subprocess_exec(
+                'wg', 'show', 'wg0', 'allowed-ips',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await result.communicate()
+            if result.returncode == 0:
+                for line in stdout.decode().splitlines():
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1].startswith('10.13.13.'):
+                        octet = parts[1].split('/')[0].split('.')[-1]
+                        if octet.isdigit():
+                            existing_ips.append(int(octet))
+        except Exception:
+            pass
+
         return max(existing_ips + [1]) + 1
     
     async def _add_wireguard_peer_to_server(self, public_key: str, peer_name: str, peer_ip: int):
-        """Add peer to WireGuard server configuration"""
-        server_config = f"{settings.wireguard_config_path}/wg0.conf"
-        
+        """Add peer to the live WireGuard server configuration (requires vpn-api
+        to share the wireguard container's network namespace)"""
+        server_config = f"{settings.wireguard_config_path}/wg_confs/wg0.conf"
+
         # Create server config if it doesn't exist
         if not os.path.exists(server_config):
+            os.makedirs(os.path.dirname(server_config), exist_ok=True)
             server_private_key_path = f"{settings.wireguard_config_path}/server_private.key"
             if os.path.exists(server_private_key_path):
                 with open(server_private_key_path, 'r') as f:
@@ -309,29 +330,35 @@ PersistentKeepalive = 25
                 server_private_key = subprocess.run(['wg', 'genkey'], capture_output=True, text=True).stdout.strip()
                 with open(server_private_key_path, 'w') as f:
                     f.write(server_private_key)
-            
+
             server_config_content = f"""[Interface]
-PrivateKey = {server_private_key}
-Address = 10.13.13.1/24
+Address = 10.13.13.1
 ListenPort = {settings.wireguard_port}
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+PrivateKey = {server_private_key}
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth+ -j MASQUERADE
 """
             with open(server_config, 'w') as f:
                 f.write(server_config_content)
-        
+
         # Add peer to server config
         with open(server_config, 'a') as f:
             f.write(f"\n[Peer]\n")
             f.write(f"# {peer_name}\n")
             f.write(f"PublicKey = {public_key}\n")
             f.write(f"AllowedIPs = 10.13.13.{peer_ip}/32\n")
-        
-        # Reload WireGuard configuration
+
+        # Push the change into the live interface
         try:
-            await asyncio.create_subprocess_exec('wg', 'syncconf', 'wg0', server_config)
-        except:
-            pass  # WireGuard might not be running yet
+            proc = await asyncio.create_subprocess_exec(
+                'bash', '-c', f'wg syncconf wg0 <(wg-quick strip {server_config})',
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                logger.warning(f"wg syncconf failed for new peer {peer_name}: {stderr.decode().strip()}")
+        except Exception as e:
+            logger.warning(f"wg syncconf failed for new peer {peer_name}: {e}")
     
     async def _generate_qr_code(self, config_data: str) -> str:
         """Generate QR code for configuration"""
@@ -354,7 +381,7 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -
                 os.remove(peer_config_file)
             
             # Remove peer from server configuration
-            server_config = f"{settings.wireguard_config_path}/wg0.conf"
+            server_config = f"{settings.wireguard_config_path}/wg_confs/wg0.conf"
             if os.path.exists(server_config):
                 await self._remove_wireguard_peer_from_server(peer_name, server_config)
             
@@ -379,36 +406,34 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -
     async def _remove_wireguard_peer_from_server(self, peer_name: str, server_config: str):
         """Remove peer from WireGuard server configuration"""
         with open(server_config, 'r') as f:
-            lines = f.readlines()
-        
-        # Remove peer section
-        new_lines = []
-        skip_section = False
-        for line in lines:
-            if line.strip() == f"# {peer_name}":
-                skip_section = True
-                continue
-            elif skip_section and line.startswith('[Peer]'):
-                continue
-            elif skip_section and (line.startswith('PublicKey =') or 
-                                   line.startswith('AllowedIPs =') or 
-                                   line.strip() == ''):
-                continue
-            elif skip_section and line.startswith('['):
-                skip_section = False
-                new_lines.append(line)
-            elif not skip_section:
-                new_lines.append(line)
-        
+            content = f.read()
+
+        # Split on the [Peer] marker so each peer's block (comment, keys,
+        # AllowedIPs) is handled as a unit instead of line-by-line, which
+        # can't look ahead to know a block belongs to the peer being removed.
+        sections = content.split('[Peer]')
+        header = sections[0]
+        peer_blocks = sections[1:]
+
+        kept_blocks = [block for block in peer_blocks if f"# {peer_name}" not in block]
+
+        new_content = header + ''.join(f"[Peer]{block}" for block in kept_blocks)
+
         # Write updated configuration
         with open(server_config, 'w') as f:
-            f.writelines(new_lines)
-        
-        # Reload WireGuard configuration
+            f.write(new_content)
+
+        # Push the change into the live interface
         try:
-            await asyncio.create_subprocess_exec('wg', 'syncconf', 'wg0', server_config)
-        except:
-            pass  # WireGuard might not be running
+            proc = await asyncio.create_subprocess_exec(
+                'bash', '-c', f'wg syncconf wg0 <(wg-quick strip {server_config})',
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                logger.warning(f"wg syncconf failed while removing peer: {stderr.decode().strip()}")
+        except Exception as e:
+            logger.warning(f"wg syncconf failed while removing peer: {e}")
 
     async def get_system_stats(self) -> SystemStats:
         """Get system statistics"""
@@ -987,10 +1012,14 @@ async def lifespan(app: FastAPI):
     
     # Initialize IP rotation service
     await ip_rotation_service.initialize()
-    
+
+    # Start background polling of CoreDNS query logs for the Activity tab
+    dns_poller_task = asyncio.create_task(dns_activity_poller())
+
     yield
-    
+
     # Shutdown
+    dns_poller_task.cancel()
     print("Shutting down BartoloVPN API...")
 
 # Create FastAPI app
@@ -1161,6 +1190,48 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
             "disk_percent": 0,
             "error": str(e)
         }
+
+@app.get("/api/dns/queries")
+async def get_dns_queries(
+    limit: int = 200,
+    peer_ip: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Recent domain lookups per peer, most recent first (the dashboard's
+    Activity tab). Domain-level only - see dns_activity.py for how this is
+    collected."""
+    async with AsyncSessionLocal() as db:
+        stmt = select(DnsQueryLog).order_by(DnsQueryLog.timestamp.desc()).limit(min(limit, 1000))
+        if peer_ip:
+            stmt = stmt.where(DnsQueryLog.peer_ip == peer_ip)
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
+
+    # Map peer IPs to friendly names using the app-managed peer config files
+    # (peers auto-provisioned by the wireguard container itself won't have
+    # one, and just show their raw IP)
+    ip_to_name = {}
+    peers_dir = f"{settings.wireguard_config_path}/peers"
+    if os.path.exists(peers_dir):
+        for fname in os.listdir(peers_dir):
+            if fname.endswith('.conf'):
+                with open(os.path.join(peers_dir, fname), 'r') as f:
+                    content = f.read()
+                if 'Address = 10.13.13.' in content:
+                    ip_suffix = content.split('Address = 10.13.13.')[1].split('/')[0].strip()
+                    ip_to_name[f"10.13.13.{ip_suffix}"] = fname[:-5]
+
+    return {
+        "queries": [
+            {
+                "peer_ip": r.peer_ip,
+                "peer_name": ip_to_name.get(r.peer_ip, r.peer_ip),
+                "domain": r.domain,
+                "timestamp": r.timestamp.isoformat()
+            }
+            for r in rows
+        ]
+    }
 
 @app.post("/auth/register", response_model=UserResponse)
 async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
@@ -1580,6 +1651,24 @@ async def download_wireguard_config(
         raise HTTPException(status_code=404, detail="Peer configuration not found")
     
     return FileResponse(config_file, filename=f"{peer_name}.conf")
+
+@app.get("/vpn/wireguard/peers/{peer_name}/qrcode")
+async def get_wireguard_peer_qrcode(
+    peer_name: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate a QR code for an existing peer's config (e.g. to scan with the
+    WireGuard mobile app), without needing to recreate the peer's keys"""
+    config_file = f"{settings.wireguard_config_path}/peers/{peer_name}.conf"
+
+    if not os.path.exists(config_file):
+        raise HTTPException(status_code=404, detail="Peer configuration not found")
+
+    with open(config_file, 'r') as f:
+        config_content = f.read()
+
+    qr_code = await vpn_manager._generate_qr_code(config_content)
+    return {"peer_name": peer_name, "qr_code": qr_code}
 
 @app.delete("/vpn/wireguard/peers/{peer_name}")
 async def delete_wireguard_peer(

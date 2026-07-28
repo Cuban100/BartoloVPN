@@ -1,0 +1,34 @@
+<!-- DNS Activity Component: domain-level lookups per peer -->
+<div class="page-header">
+    <h2>Activity</h2>
+    <p>Domain-level lookups made by each connected peer (from DNS query logging - not full URLs, since that would require breaking HTTPS)</p>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>Recent DNS Activity</h3>
+        <div class="section-actions">
+            <select id="activity-peer-filter" class="form-control" style="width: auto;" onchange="loadDnsActivity()">
+                <option value="">All peers</option>
+            </select>
+            <button class="btn btn-secondary" onclick="loadDnsActivity()">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Peer</th>
+                    <th>Domain</th>
+                </tr>
+            </thead>
+            <tbody id="dns-activity-table">
+                <tr><td colspan="3" class="text-center">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
