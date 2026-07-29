@@ -89,8 +89,14 @@ class Token(BaseModel):
     username: str
 
 class WireGuardPeerCreate(BaseModel):
-    """WireGuard peer creation model"""
-    peer_name: str = Field(..., min_length=3, max_length=50)
+    """WireGuard peer creation model.
+
+    peer_name is capped at 4 chars (not the usual 50) because the
+    downloaded config is named "BartoloVPN-{peer_name}.conf", and that
+    filename becomes the tunnel name on import - WireGuard hard-caps
+    tunnel names at 15 characters, and "BartoloVPN-" alone is 11.
+    """
+    peer_name: str = Field(..., min_length=3, max_length=4)
     user_id: int
     allowed_ips: str = "0.0.0.0/0"
     dns_servers: str = "1.1.1.1,8.8.8.8"
@@ -1668,7 +1674,7 @@ async def download_wireguard_config(
     if not os.path.exists(config_file):
         raise HTTPException(status_code=404, detail="Peer configuration not found")
     
-    return FileResponse(config_file, filename=f"{peer_name}.conf")
+    return FileResponse(config_file, filename=f"BartoloVPN-{peer_name}.conf")
 
 @app.get("/vpn/wireguard/peers/{peer_name}/qrcode")
 async def get_wireguard_peer_qrcode(

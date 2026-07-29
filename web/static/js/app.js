@@ -1154,12 +1154,14 @@ function showPeerQrModal(qrCodeBase64, peerName) {
     const modal = document.getElementById('peer-qr-modal');
     const img = document.getElementById('peer-qr-image');
     const nameEl = document.getElementById('peer-qr-name');
+    const suggestedNameEl = document.getElementById('peer-qr-suggested-name');
     if (!modal || !img) {
         console.error('QR modal not found');
         return;
     }
     img.src = `data:image/png;base64,${qrCodeBase64}`;
     if (nameEl) nameEl.textContent = peerName || '';
+    if (suggestedNameEl) suggestedNameEl.textContent = peerName ? `BartoloVPN-${peerName}` : '';
     modal.style.display = 'flex';
 }
 

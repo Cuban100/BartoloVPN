@@ -484,8 +484,8 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
             <form id="add-peer-form">
                 <div class="form-group">
                     <label for="peer-name">Peer Name</label>
-                    <input type="text" id="peer-name" name="peer-name" required placeholder="Enter peer name">
-                    <small class="form-help">Must be 3-50 characters long</small>
+                    <input type="text" id="peer-name" name="peer-name" required minlength="3" maxlength="4" placeholder="e.g. iph1">
+                    <small class="form-help">3-4 characters - the downloaded config is named "BartoloVPN-{name}", and WireGuard caps tunnel names at 15 characters</small>
                 </div>
                 <div class="form-group">
                     <label for="peer-allowed-ips">Allowed IPs</label>
@@ -513,8 +513,8 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
                 <input type="hidden" id="edit-peer-current-name" name="current-name">
                 <div class="form-group">
                     <label for="edit-peer-name">Peer Name</label>
-                    <input type="text" id="edit-peer-name" name="peer-name" required placeholder="Enter peer name">
-                    <small class="form-help">Must be 3-50 characters long</small>
+                    <input type="text" id="edit-peer-name" name="peer-name" required minlength="3" maxlength="4" placeholder="e.g. iph1">
+                    <small class="form-help">3-4 characters - the downloaded config is named "BartoloVPN-{name}", and WireGuard caps tunnel names at 15 characters</small>
                 </div>
                 <div class="form-group">
                     <label for="edit-peer-allowed-ips">Allowed IPs</label>
@@ -542,6 +542,7 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
             <img id="peer-qr-image" src="" alt="WireGuard peer QR code" style="max-width: 280px; width: 100%; background: #fff; padding: 12px; border-radius: 8px;">
             <p class="form-help" style="margin-top: 1rem;">
                 Open the WireGuard app on iPhone/Android &rarr; tap "+" &rarr; "Scan from QR code" &rarr; point at this image.
+                When it asks you to name the tunnel, type <strong id="peer-qr-suggested-name"></strong> - the app can't read a name from the QR code itself, so this has to be typed in manually.
             </p>
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary" onclick="closePeerQrModal()">Close</button>
