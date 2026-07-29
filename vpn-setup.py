@@ -232,6 +232,20 @@ def install_missing_requirements(missing_keys, os_info):
             except subprocess.CalledProcessError:
                 pass
 
+    if 'ipsec' in missing_keys:
+        # Installing strongswan auto-starts its own IKE daemon (charon) on
+        # UDP 500/4500 - BartoloVPN runs IKEv2 in its own Docker container
+        # on those same ports, so the host service has to be disabled or it
+        # blocks the container from ever starting ("address already in use")
+        for service in ('strongswan-starter', 'strongswan'):
+            try:
+                subprocess.run(['sudo', 'systemctl', 'disable', '--now', service],
+                                check=True, stderr=subprocess.DEVNULL)
+                print(f"NOTE: Disabled the host's {service} service (BartoloVPN runs IKEv2 in Docker on the same ports)")
+                break
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
+
 
 def check_requirements():
     """Detect the OS first, then check - and auto-install if missing - the
