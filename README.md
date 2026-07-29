@@ -17,9 +17,6 @@
 ## 📚 Documentation
 
 ### Setup Guides
-- **[WireGuard Setup Guide](WIREGUARD_SETUP.md)** - Complete WireGuard configuration and client setup
-- **[OpenVPN Setup Guide](OPENVPN_SETUP.md)** - Complete OpenVPN configuration and client setup
-- **[IKEv2 Setup Guide](IKEV2_SETUP.md)** - Complete IKEv2/IPSec configuration and client setup
 - **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
 - **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
 
@@ -151,23 +148,17 @@ JWT_SECRET_KEY=your-super-secret-jwt-key
 3. Download QR code or configuration file
 4. Import into WireGuard client
 
-**📖 Detailed Setup Guide**: [WireGuard Setup Instructions](WIREGUARD_SETUP.md)
-
 #### OpenVPN
 1. Access web interface → OpenVPN tab
 2. Click "Add Client" to generate configuration
 3. Download .ovpn file
 4. Import into OpenVPN client
 
-**📖 Detailed Setup Guide**: [OpenVPN Setup Instructions](OPENVPN_SETUP.md)
-
 #### IKEv2
 1. Access web interface → IKEv2 tab
 2. Create user credentials with username/password
 3. Configure client with server IP and credentials
 4. Connect using native VPN clients
-
-**📖 Detailed Setup Guide**: [IKEv2 Setup Instructions](IKEV2_SETUP.md)
 
 ## 🔧 Advanced Features
 
@@ -220,8 +211,6 @@ docker-compose logs ikev2
 ## � Documentation
 
 ### Setup Guides
-- **[OpenVPN Setup Guide](OPENVPN_SETUP.md)** - Complete OpenVPN configuration and client setup
-- **[IKEv2 Setup Guide](IKEV2_SETUP.md)** - Complete IKEv2/IPSec configuration and client setup
 - **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
 - **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
 
