@@ -325,12 +325,6 @@ def get_user_input():
     else:
         config['api_port'] = "5000"
 
-    # VPN protocols
-    print("\n🔧 VPN Protocols:")
-    config['wireguard_enabled'] = input("Enable WireGuard? (y/n, default: y): ").strip().lower() != 'n'
-    config['openvpn_enabled'] = input("Enable OpenVPN? (y/n, default: y): ").strip().lower() != 'n'
-    config['ikev2_enabled'] = input("Enable IKEv2? (y/n, default: y): ").strip().lower() != 'n'
-    
     # Security
     config['encryption_level'] = input("🔐 Encryption Level (128/256, default: 256): ").strip() or "256"
     config['dns_servers'] = input("📡 DNS Servers (default: 1.1.1.1,8.8.8.8): ").strip() or "1.1.1.1,8.8.8.8"
@@ -368,7 +362,7 @@ WEB_PASSWORD={config['web_password']}
 API_PORT={config['api_port']}
 
 # WireGuard Configuration
-WIREGUARD_ENABLED={'true' if config['wireguard_enabled'] else 'false'}
+WIREGUARD_ENABLED=true
 WIREGUARD_PORT=51820
 WIREGUARD_PEERS=10
 WIREGUARD_DNS={config['dns_servers']}
@@ -376,14 +370,14 @@ WIREGUARD_SUBNET=10.13.13.0
 WIREGUARD_ALLOWED_IPS=0.0.0.0/0
 
 # OpenVPN Configuration
-OPENVPN_ENABLED={'true' if config['openvpn_enabled'] else 'false'}
+OPENVPN_ENABLED=true
 OPENVPN_PORT=1194
 OPENVPN_PROTOCOL=udp
 OPENVPN_CIPHER=AES-{config['encryption_level']}-GCM
 OPENVPN_AUTH=SHA256
 
 # IKEv2 Configuration
-IKEV2_ENABLED={'true' if config['ikev2_enabled'] else 'false'}
+IKEV2_ENABLED=true
 IKEV2_PSK={ikev2_psk}
 IKEV2_USER=vpnuser
 IKEV2_PASSWORD={ikev2_password}
