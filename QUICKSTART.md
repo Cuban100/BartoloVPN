@@ -42,9 +42,9 @@ After setup completes:
 2. Login with the admin credentials you provided
 3. Start managing your VPN!
 
-## 🔧 Manual Setup (Alternative)
+## 🔧 Manual Setup (Alternative — NOT a requirement)
 
-If you prefer manual setup:
+The installer above already does all of this automatically. This is only for advanced users who want to configure things by hand instead:
 
 ```bash
 # 1. Copy environment template
