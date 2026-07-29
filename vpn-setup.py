@@ -28,6 +28,25 @@ def get_api_port():
     return "5000"
 
 
+def wait_for_service(port, timeout=15):
+    """Poll until the dashboard is actually accepting connections, not just
+    until 'docker-compose up -d' returns - that only means the container
+    started, not that the app inside has finished its own startup (DB init,
+    admin user creation, etc take a few seconds). Best-effort: gives up and
+    moves on after `timeout` seconds either way, doesn't hard-fail setup."""
+    print(f"⏳ Waiting for the dashboard to come up (up to {timeout}s)...")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("localhost", int(port)), timeout=1):
+                print("✅ Dashboard is up")
+                return True
+        except (OSError, ValueError):
+            time.sleep(1)
+    print("⚠️  Dashboard didn't respond in time - it may still be starting up")
+    return False
+
+
 def open_browser(port):
     """Best-effort opening of the dashboard in the default browser - no-op
     (not an error) on headless servers with no display/browser available"""
@@ -568,6 +587,7 @@ def main():
     if build_and_start():
         show_status()
         port = get_api_port()
+        wait_for_service(port)
         open_browser(port)
         show_next_steps(port)
     else:
