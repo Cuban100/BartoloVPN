@@ -442,34 +442,6 @@ def create_directories():
         Path(directory).mkdir(parents=True, exist_ok=True)
         print(f"✅ Created {directory}/")
 
-def setup_firewall():
-    """Setup firewall rules"""
-    print("\n🔥 Setting up firewall rules...")
-    
-    # Check if ufw is available
-    if shutil.which('ufw'):
-        try:
-            # Allow SSH
-            subprocess.run(['ufw', 'allow', 'ssh'], check=True)
-            
-            # Allow web interface
-            subprocess.run(['ufw', 'allow', '8080/tcp'], check=True)
-            
-            # Allow VPN ports
-            subprocess.run(['ufw', 'allow', '51820/udp'], check=True)  # WireGuard
-            subprocess.run(['ufw', 'allow', '1194/udp'], check=True)   # OpenVPN
-            subprocess.run(['ufw', 'allow', '500/udp'], check=True)    # IKEv2
-            subprocess.run(['ufw', 'allow', '4500/udp'], check=True)   # IKEv2 NAT
-            
-            # Enable firewall
-            subprocess.run(['ufw', '--force', 'enable'], check=True)
-            
-            print("✅ Firewall configured successfully")
-        except subprocess.CalledProcessError as e:
-            print(f"⚠️  Firewall setup failed: {e}")
-    else:
-        print("⚠️  UFW not found. Please configure firewall manually.")
-
 def build_and_start():
     """Build and start the services"""
     print("\n🚀 Building and starting services...")
@@ -556,10 +528,7 @@ def main():
 
     # Create directories
     create_directories()
-    
-    # Setup firewall
-    setup_firewall()
-    
+
     # Build and start services
     if build_and_start():
         show_status()
