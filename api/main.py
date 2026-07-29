@@ -272,6 +272,7 @@ PersistentKeepalive = 25
             return {
                 'peer_name': peer_name,
                 'user_id': user_id,
+                'public_key': public_key,
                 'config': peer_config,
                 'qr_code': qr_code,
                 'config_file': peer_file
@@ -1609,16 +1610,33 @@ async def list_wireguard_peers(current_user: dict = Depends(get_current_user)):
                     with open(config_path, 'r') as f:
                         config_content = f.read()
                     
-                    # Extract IP from config (looking for Address line)
+                    # Extract IP and private key from config
                     address_line = ""
+                    private_key = ""
                     for line in config_content.split('\n'):
-                        if line.strip().startswith('Address'):
-                            address_line = line.strip().split('=')[1].strip()
-                            break
-                    
+                        stripped = line.strip()
+                        if stripped.startswith('Address'):
+                            address_line = stripped.split('=', 1)[1].strip()
+                        elif stripped.startswith('PrivateKey'):
+                            private_key = stripped.split('=', 1)[1].strip()
+
+                    # Derive the public key from the stored private key so it
+                    # can be shown in the dashboard (only the private key is
+                    # persisted in the peer's own config file)
+                    public_key = ""
+                    if private_key:
+                        proc = await asyncio.create_subprocess_exec(
+                            'wg', 'pubkey',
+                            stdin=asyncio.subprocess.PIPE,
+                            stdout=asyncio.subprocess.PIPE
+                        )
+                        stdout, _ = await proc.communicate(input=private_key.encode())
+                        public_key = stdout.decode().strip()
+
                     peers.append({
                         "name": peer_name,
                         "ip": address_line,
+                        "public_key": public_key,
                         "config_file": filename,
                         "created_at": os.path.getctime(config_path)
                     })
@@ -1770,6 +1788,16 @@ async def uninstall_openvpn(
         raise HTTPException(status_code=403, detail="Only admin can uninstall services")
     
     return await vpn_manager.uninstall_openvpn()
+
+@app.get("/vpn/ikev2/credentials")
+async def get_ikev2_credentials(current_user: dict = Depends(get_current_user)):
+    """Real IKEv2 pre-shared key / username / password, for the dashboard's
+    IKEv2 tab (previously hardcoded placeholder text in the template)"""
+    return {
+        "psk": settings.ikev2_psk,
+        "username": settings.ikev2_user,
+        "password": settings.ikev2_password
+    }
 
 @app.post("/vpn/ikev2/uninstall")
 async def uninstall_ikev2(

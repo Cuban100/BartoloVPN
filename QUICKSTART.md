@@ -5,28 +5,33 @@ Get your multi-protocol VPN server running in minutes!
 ## 🚀 Quick Setup
 
 ### 1. Prerequisites
-- Linux server (Ubuntu 20.04+ recommended)
-- Docker and Docker Compose installed
-- Python 3.8+
-- Public IP address
+- Linux, macOS, or Windows
+- That's it — Python, Docker, Docker Compose, and the VPN protocol tools are all detected and auto-installed by the installer below if missing.
 
 ### 2. Installation
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/Cuban100/BartoloVPN.git
 cd BartoloVPN
 
-# Run the automated setup
-python3 setup.py
+# Linux / macOS
+./install.sh
+
+# Windows (CMD)
+install.bat
 ```
 
-The setup script will:
-- ✅ Check system requirements
-- 📝 Guide you through configuration
-- 🔧 Create necessary directories
-- 🔥 Configure firewall rules
-- 🚀 Build and start all services
+The installer will:
+- 🖥️ Detect your OS and auto-install Python if it isn't already present (falling back to compiling from source on Linux if no package is available)
+- 🔍 Then hand off to `vpn-setup.py`, which:
+  - ✅ Detects your OS again and auto-installs Docker, Docker Compose, and the WireGuard/OpenVPN/IKEv2 CLI tools if missing
+  - 📝 Guides you through configuration (auto-detecting your external IP, auto-generating the JWT secret and IKEv2 pre-shared key)
+  - 🔧 Creates necessary directories
+  - 🔥 Configures firewall rules
+  - 🚀 Builds and starts all services
+
+If you already have Python 3.8+ installed, you can skip straight to `python3 vpn-setup.py` instead.
 
 ### 3. Access the Web Interface
 

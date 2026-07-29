@@ -482,9 +482,9 @@ sudo systemctl restart NetworkManager
 # Create connection using NetworkManager CLI<br>
 nmcli connection add type vpn con-name "BartoloVPN-IKEv2" \\<br>
   ifname -- vpn.service-type org.freedesktop.NetworkManager.strongswan \\<br>
-  vpn.data 'address=YOUR_SERVER_IP, encap=yes, ipcomp=no, method=eap, user=vpnuser'<br><br>
+  vpn.data 'address=YOUR_SERVER_IP, encap=yes, ipcomp=no, method=eap, user=<span id="linux-cli-username">vpnuser</span>'<br><br>
 # Set password (will prompt)<br>
-nmcli connection modify "BartoloVPN-IKEv2" vpn.secrets password=vpnpass-change-this<br><br>
+nmcli connection modify "BartoloVPN-IKEv2" vpn.secrets password=<span id="linux-cli-password">vpnpass-change-this</span><br><br>
 # Connect<br>
 nmcli connection up "BartoloVPN-IKEv2"
                         </code>

@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     # IKEv2 Configuration
     ikev2_enabled: bool = Field(...)
     ikev2_psk: str = Field(...)
+    ikev2_user: str = Field(default="vpnuser")
+    ikev2_password: str = Field(...)
 
     
     # Security Settings

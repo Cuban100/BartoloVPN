@@ -857,6 +857,8 @@ function switchTab(tabName) {
         initializeMonitoring();
     } else if (tabName === 'activity') {
         loadDnsActivity();
+    } else if (tabName === 'ikev2') {
+        loadIkev2Credentials();
     } else {
         // Stop monitoring when switching away from monitoring tab
         cleanupMonitoring();
@@ -1328,6 +1330,41 @@ async function loadDnsActivity() {
         if (tableBody) {
             tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading activity</td></tr>';
         }
+    }
+}
+
+// Populate the IKEv2 tab's PSK/username/password with the real values
+// (these used to be hardcoded placeholder text in the template)
+async function loadIkev2Credentials() {
+    console.log('Loading IKEv2 credentials');
+    try {
+        const response = await apiFetch('/vpn/ikev2/credentials');
+        if (!response.ok) {
+            console.error('Failed to load IKEv2 credentials');
+            return;
+        }
+        const creds = await response.json();
+
+        const pskEl = document.getElementById('ikev2-psk');
+        if (pskEl) pskEl.setAttribute('data-value', creds.psk);
+
+        document.querySelectorAll('[id$="-username"]').forEach(el => {
+            if (el.classList.contains('masked')) {
+                el.setAttribute('data-value', creds.username);
+            } else {
+                el.textContent = creds.username;
+            }
+        });
+
+        document.querySelectorAll('[id$="-password"]').forEach(el => {
+            if (el.classList.contains('masked')) {
+                el.setAttribute('data-value', creds.password);
+            } else {
+                el.textContent = creds.password;
+            }
+        });
+    } catch (error) {
+        console.error('Error loading IKEv2 credentials:', error);
     }
 }
 

@@ -146,7 +146,9 @@ services:
       - OPENVPN_CIPHER=AES-256-GCM
       - OPENVPN_AUTH=SHA256
       - IKEV2_ENABLED=true
-      - IKEV2_PSK=BartoloVPN2025SecureKey!@ensilenciohatenidoqueser
+      - IKEV2_PSK=${IKEV2_PSK}
+      - IKEV2_USER=${IKEV2_USER:-vpnuser}
+      - IKEV2_PASSWORD=${IKEV2_PASSWORD}
 
       - ENCRYPTION_LEVEL=256
       - DNS_SERVERS=1.1.1.1,8.8.8.8
