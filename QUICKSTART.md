@@ -38,8 +38,8 @@ If you already have Python 3.8+ installed, you can skip straight to `python3 vpn
 ### 3. Access the Web Interface
 
 After setup completes:
-1. Open your browser to `http://your-server-ip:8080`
-2. Login with the admin credentials you provided
+1. Open your browser to `http://your-server-ip:5000`
+2. Login with the admin username/password you entered during setup (or check `WEB_USERNAME`/`WEB_PASSWORD` in `.env` if you forgot)
 3. Start managing your VPN!
 
 ## 🔧 Manual Setup (Alternative — NOT a requirement)
@@ -63,7 +63,7 @@ docker-compose up -d
 ## 📱 Adding Users
 
 ### Via Web Interface (Recommended)
-1. Login as admin
+1. Login with your admin credentials from `.env` (see step 3 above)
 2. Go to "Users" tab
 3. Click "Add New User"
 4. Fill in user details
