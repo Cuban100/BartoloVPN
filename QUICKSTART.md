@@ -10,15 +10,17 @@ Get your multi-protocol VPN server running in minutes!
 
 ### 2. Installation
 
+**Linux / macOS** — open a terminal and run:
 ```bash
-# Clone the repository
 git clone https://github.com/Cuban100/BartoloVPN.git
 cd BartoloVPN
-
-# Linux / macOS
 ./install.sh
+```
 
-# Windows (CMD)
+**Windows** — open Command Prompt and run:
+```cmd
+git clone https://github.com/Cuban100/BartoloVPN.git
+cd BartoloVPN
 install.bat
 ```
 
