@@ -12,7 +12,34 @@ import secrets
 import socket
 import time
 import urllib.request
+import webbrowser
 from pathlib import Path
+
+
+def get_api_port():
+    """Read API_PORT back out of .env (falls back to 5000 if missing)"""
+    try:
+        with open('.env') as f:
+            for line in f:
+                if line.strip().startswith('API_PORT='):
+                    return line.strip().split('=', 1)[1].strip() or "5000"
+    except FileNotFoundError:
+        pass
+    return "5000"
+
+
+def open_browser(port):
+    """Best-effort opening of the dashboard in the default browser - no-op
+    (not an error) on headless servers with no display/browser available"""
+    url = f"http://localhost:{port}"
+    print(f"🌐 Opening Web UI on {url} ...")
+    try:
+        if webbrowser.open(url):
+            print(f"✅ Opened {url} in your default browser")
+        else:
+            print(f"⚠️  Couldn't auto-open a browser - visit {url} manually")
+    except webbrowser.Error:
+        print(f"🌐 No browser available here (headless server?) - visit {url} manually")
 
 
 def get_local_ip():
@@ -481,13 +508,13 @@ def show_status():
     except subprocess.CalledProcessError:
         print("❌ Failed to get service status")
 
-def show_next_steps():
+def show_next_steps(port):
     """Show next steps for the user"""
-    print("""
+    print(f"""
 🎉 Setup Complete!
 
 Next Steps:
-1. 🌐 Access the web interface: http://your-server-ip:8080
+1. 🌐 Access the web interface: http://your-server-ip:{port}
 2. 👤 Login with the admin credentials you provided
 3. 🔧 Configure additional endpoints and users
 4. 📱 Generate client configurations for your friends
@@ -540,7 +567,9 @@ def main():
     # Build and start services
     if build_and_start():
         show_status()
-        show_next_steps()
+        port = get_api_port()
+        open_browser(port)
+        show_next_steps(port)
     else:
         print("❌ Setup failed. Please check the errors above.")
         sys.exit(1)
