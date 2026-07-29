@@ -23,7 +23,7 @@ services:
       - /lib/modules:/lib/modules
     ports:
       - "${WIREGUARD_PORT:-51820}:51820/udp"
-      - "5000:5000"
+      - "${API_PORT:-5000}:5000"
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1

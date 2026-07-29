@@ -38,7 +38,7 @@ If you already have Python 3.8+ installed, you can skip straight to `python3 vpn
 ### 3. Access the Web Interface
 
 After setup completes:
-1. Open your browser to `http://your-server-ip:5000`
+1. Open your browser to `http://your-server-ip:5000` (or whichever port you chose at the "Web UI port" prompt during setup — check `API_PORT` in `.env` if you forgot)
 2. Login with the admin username/password you entered during setup (or check `WEB_USERNAME`/`WEB_PASSWORD` in `.env` if you forgot)
 3. Start managing your VPN!
 

@@ -3,6 +3,7 @@
 Database models and configuration for BartoloVPN
 """
 
+import os
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON
@@ -121,6 +122,15 @@ class IPRotation(Base):
 
 # Import configuration
 from config import settings
+
+# For sqlite, ensure the database file's directory actually exists - sqlite
+# will happily create the .db file itself but not its parent directory, and
+# this app doesn't otherwise guarantee that directory is ever created
+if settings.database_url.startswith("sqlite"):
+    _db_path = settings.database_url.split("///", 1)[-1]
+    _db_dir = os.path.dirname(_db_path)
+    if _db_dir:
+        os.makedirs(_db_dir, exist_ok=True)
 
 # Create async engine
 engine = create_async_engine(

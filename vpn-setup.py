@@ -315,7 +315,16 @@ def get_user_input():
     if not config['web_password']:
         print("❌ Admin password is required!")
         return None
-    
+
+    port_input = input("🔌 Web UI port (default: 5000): ").strip()
+    if port_input:
+        if not port_input.isdigit() or not (1 <= int(port_input) <= 65535):
+            print("❌ Port must be a number between 1 and 65535!")
+            return None
+        config['api_port'] = port_input
+    else:
+        config['api_port'] = "5000"
+
     # VPN protocols
     print("\n🔧 VPN Protocols:")
     config['wireguard_enabled'] = input("Enable WireGuard? (y/n, default: y): ").strip().lower() != 'n'
@@ -356,6 +365,7 @@ DOMAIN={config['domain']}
 
 WEB_USERNAME={config['web_username']}
 WEB_PASSWORD={config['web_password']}
+API_PORT={config['api_port']}
 
 # WireGuard Configuration
 WIREGUARD_ENABLED={'true' if config['wireguard_enabled'] else 'false'}
