@@ -413,8 +413,8 @@ function updateSystemResources(data) {
     
     // Update Memory
     const memoryUsage = data.memory?.percent || data.memory_percent || 0;
-    const memoryUsed = data.memory?.used_gb || 0;
-    const memoryTotal = data.memory?.total_gb || 0;
+    const memoryUsed = data.memory?.used_gb || data.memory_used_gb || 0;
+    const memoryTotal = data.memory?.total_gb || data.memory_total_gb || 0;
     
     const memoryUsageEl = document.getElementById('memory-usage');
     const memoryProgressEl = document.getElementById('memory-progress');
@@ -428,8 +428,8 @@ function updateSystemResources(data) {
     
     // Update Disk
     const diskUsage = data.disk?.percent || data.disk_percent || 0;
-    const diskUsed = data.disk?.used_gb || 0;
-    const diskTotal = data.disk?.total_gb || 0;
+    const diskUsed = data.disk?.used_gb || data.disk_used_gb || 0;
+    const diskTotal = data.disk?.total_gb || data.disk_total_gb || 0;
     
     const diskUsageEl = document.getElementById('disk-usage');
     const diskProgressEl = document.getElementById('disk-progress');
