@@ -27,13 +27,27 @@ log_step() {
     echo -e "${BLUE}STEP:${NC} $1"
 }
 
-# Configuration
-DOMAIN="caveplex.com"
-TUNNEL_NAME="bartolo-vpn"
-LOCAL_IP="192.168.0.2"
-API_PORT="5000"
-WEB_PORT="8080"
-STATS_PORT="8404"
+# Configuration - reads from .env if present, otherwise prompts. Nothing
+# here should be a hardcoded personal value: this script is meant to be run
+# by anyone deploying BartoloVPN, not just the original setup.
+if [ -f "$(dirname "$0")/../.env" ]; then
+    # shellcheck disable=SC1090
+    source "$(dirname "$0")/../.env"
+fi
+
+DOMAIN="${DOMAIN:-}"
+TUNNEL_NAME="${TUNNEL_NAME:-bartolo-vpn}"
+LOCAL_IP="${LOCAL_IP:-}"
+API_PORT="${API_PORT:-5000}"
+WEB_PORT="${WEB_PORT:-8080}"
+STATS_PORT="${STATS_PORT:-8404}"
+
+if [ -z "$DOMAIN" ]; then
+    read -rp "Enter your domain (e.g. example.com): " DOMAIN
+fi
+if [ -z "$LOCAL_IP" ]; then
+    read -rp "Enter this server's local IP (e.g. 192.168.1.100): " LOCAL_IP
+fi
 
 install_cloudflared() {
     log_step "Installing Cloudflare Tunnel (cloudflared)..."

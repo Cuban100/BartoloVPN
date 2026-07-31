@@ -158,9 +158,9 @@ services:
       - MONITORING_ENABLED=true
       - BANDWIDTH_LIMIT_MB=1000
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - LOCAL_IP=192.168.0.2
-      - LOCAL_IPV6=fdbb:e478:7618:fa6a:fd95:9ab7:18e3:21eb
-      - PREVIOUS_IPS=81.171.74.47,72.238.72.252
+      - LOCAL_IP=${LOCAL_IP}
+      - LOCAL_IPV6=${LOCAL_IPV6:-::1}
+      - PREVIOUS_IPS=${PREVIOUS_IPS:-}
       - WIREGUARD_CONFIG_PATH=/config/wireguard
       - OPENVPN_CONFIG_PATH=/config/openvpn
       - IKEV2_CONFIG_PATH=/config/ikev2

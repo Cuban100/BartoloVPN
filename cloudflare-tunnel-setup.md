@@ -29,7 +29,7 @@ cloudflared --version
 cloudflared tunnel login
 
 # This will open a browser window to authenticate
-# Select your domain (caveplex.com)
+# Select your domain from the list
 ```
 
 ### 3. Create Tunnel
@@ -50,22 +50,22 @@ credentials-file: ~/.cloudflared/YOUR_TUNNEL_ID.json
 
 ingress:
   # VPN Management Interface (FastAPI)
-  - hostname: vpn.caveplex.com
-    service: http://192.168.0.2:5000
+  - hostname: vpn.yourdomain.com
+    service: http://192.168.1.100:5000
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
       readTimeout: 30s
   
   # Web UI (if separate)
-  - hostname: vpn-ui.caveplex.com
-    service: http://192.168.0.2:8080
+  - hostname: vpn-ui.yourdomain.com
+    service: http://192.168.1.100:8080
     originRequest:
       noTLSVerify: true
   
   # HAProxy Stats (optional)
-  - hostname: vpn-stats.caveplex.com
-    service: http://192.168.0.2:8404
+  - hostname: vpn-stats.yourdomain.com
+    service: http://192.168.1.100:8404
     originRequest:
       noTLSVerify: true
   
@@ -77,9 +77,9 @@ EOF
 ### 5. Create DNS Records
 ```bash
 # Create DNS records for your tunnel
-cloudflared tunnel route dns bartolo-vpn vpn.caveplex.com
-cloudflared tunnel route dns bartolo-vpn vpn-ui.caveplex.com
-cloudflared tunnel route dns bartolo-vpn vpn-stats.caveplex.com
+cloudflared tunnel route dns bartolo-vpn vpn.yourdomain.com
+cloudflared tunnel route dns bartolo-vpn vpn-ui.yourdomain.com
+cloudflared tunnel route dns bartolo-vpn vpn-stats.yourdomain.com
 ```
 
 ### 6. Start Tunnel
@@ -162,7 +162,7 @@ networks:
 # Application settings:
 # - Application name: BartoloVPN
 # - Session duration: 24 hours
-# - Domain: vpn.caveplex.com
+# - Domain: vpn.yourdomain.com
 # - App type: Self-hosted
 ```
 
@@ -287,8 +287,8 @@ cloudflared tunnel --config ~/.cloudflared/config.yml run bartolo-vpn
 ### 2. DNS Issues
 ```bash
 # Verify DNS records
-dig vpn.caveplex.com
-nslookup vpn.caveplex.com
+dig vpn.yourdomain.com
+nslookup vpn.yourdomain.com
 
 # Check tunnel routes
 cloudflared tunnel route ip show
