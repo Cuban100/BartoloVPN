@@ -874,27 +874,13 @@ key-direction 1
         """Delete an OpenVPN client"""
         try:
             logger.info(f"Deleting OpenVPN client: {client_name}")
-            
-            # Remove client configuration file
-            client_config_path = f"{settings.openvpn_config_path}/clients/{client_name}.ovpn"
-            if os.path.exists(client_config_path):
-                os.remove(client_config_path)
-            
-            # Remove client certificate and key files
-            pki_dir = f"{settings.openvpn_config_path}/pki"
-            client_cert_path = f"{pki_dir}/issued/{client_name}.crt"
-            client_key_path = f"{pki_dir}/private/{client_name}.key"
-            client_req_path = f"{pki_dir}/reqs/{client_name}.req"
-            
-            for path in [client_cert_path, client_key_path, client_req_path]:
-                if os.path.exists(path):
-                    os.remove(path)
-            
-            # Revoke the certificate so a copy of the old .ovpn file (already
-            # downloaded, or sitting in someone's inbox) can't still connect.
-            # Same as client creation: easyrsa only exists inside the
-            # openvpn container's own image, so this has to run there via
-            # the exec proxy rather than a local ./easyrsa that never exists.
+
+            # Revoke first, while the issued cert file easyrsa needs to read
+            # still exists - revoking after deleting the local files fails
+            # ("not a valid certificate") since there's nothing left to
+            # revoke. Same as client creation: easyrsa only exists inside
+            # the openvpn container's own image, so this runs there via the
+            # exec proxy rather than a local ./easyrsa that never exists.
             try:
                 exit_code, output = await self._docker_exec(
                     "bartolo-openvpn",
@@ -909,7 +895,22 @@ key-direction 1
                         logger.warning(f"Failed to regenerate CRL after revoking {client_name}: {gen_crl_output}")
             except Exception as e:
                 logger.warning(f"Certificate revocation failed: {e}")
-            
+
+            # Remove client configuration file
+            client_config_path = f"{settings.openvpn_config_path}/clients/{client_name}.ovpn"
+            if os.path.exists(client_config_path):
+                os.remove(client_config_path)
+
+            # Remove client certificate and key files
+            pki_dir = f"{settings.openvpn_config_path}/pki"
+            client_cert_path = f"{pki_dir}/issued/{client_name}.crt"
+            client_key_path = f"{pki_dir}/private/{client_name}.key"
+            client_req_path = f"{pki_dir}/reqs/{client_name}.req"
+
+            for path in [client_cert_path, client_key_path, client_req_path]:
+                if os.path.exists(path):
+                    os.remove(path)
+
             return {"message": f"OpenVPN client {client_name} deleted successfully"}
             
         except Exception as e:
