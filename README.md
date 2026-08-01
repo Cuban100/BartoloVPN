@@ -4,6 +4,16 @@
 
 ![Login Demo](web/static/img/docs/login-demo.png)
 
+## 📸 Screenshots
+
+| WireGuard | OpenVPN |
+|---|---|
+| ![WireGuard peer management](web/static/img/docs/wireguard-page.png) | ![OpenVPN client management](web/static/img/docs/openvpn-page.png) |
+
+| Monitoring | Activity |
+|---|---|
+| ![System monitoring dashboard](web/static/img/docs/monitoring-page.png) | ![DNS activity log](web/static/img/docs/activity-page.png) |
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Do## 🔒 Security Features
 
