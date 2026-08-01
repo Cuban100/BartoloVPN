@@ -726,11 +726,22 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
             client_cert_path = f"{pki_dir}/issued/{client_name}.crt"
             client_key_path = f"{pki_dir}/private/{client_name}.key"
             
+            def _pem_only(text: str, label: str) -> str:
+                """easyrsa's issued .crt files include a human-readable
+                openssl -text dump before the actual PEM block - strip
+                everything outside BEGIN/END so only the certificate itself
+                ends up in the client config."""
+                begin = f"-----BEGIN {label}-----"
+                end = f"-----END {label}-----"
+                if begin in text and end in text:
+                    return text[text.index(begin):text.index(end) + len(end)] + "\n"
+                return text
+
             try:
                 with open(ca_cert_path, 'r') as f:
-                    ca_cert = f.read()
+                    ca_cert = _pem_only(f.read(), "CERTIFICATE")
                 with open(client_cert_path, 'r') as f:
-                    client_cert = f.read()
+                    client_cert = _pem_only(f.read(), "CERTIFICATE")
                 with open(client_key_path, 'r') as f:
                     client_key = f.read()
                 with open(ta_key_path, 'r') as f:
@@ -739,7 +750,15 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
                 logger.error(f"Required certificate file not found: {e}")
                 raise HTTPException(status_code=500, detail="Certificate generation failed - PKI not properly configured")
             
-            # Create client configuration
+            # Create client configuration. No explicit cipher/auth directives:
+            # the server (scripts/init-openvpn-proper.sh) doesn't set them
+            # either, so it negotiates/defaults on its own (auth defaults to
+            # SHA1 per its own startup log) - a client that hardcodes a
+            # different digest here breaks the tls-auth HMAC entirely
+            # ("packet HMAC authentication failed"), since that computation
+            # has to match exactly, unlike the data-channel cipher which
+            # OpenVPN's NCP can negotiate. cipher/protocol params are still
+            # accepted from the caller and validated, just not forced here.
             client_config = f"""client
 dev tun
 proto {protocol}
@@ -748,9 +767,6 @@ resolv-retry infinite
 nobind
 persist-key
 persist-tun
-cipher {cipher}
-auth {settings.openvpn_auth}
-auth-nocache
 verb 3
 key-direction 1
 
