@@ -1331,7 +1331,7 @@ async function loadDnsActivity() {
         const response = await apiFetch(url);
         if (!response.ok) {
             if (tableBody) {
-                tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Failed to load activity</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Failed to load activity</td></tr>';
             }
             return;
         }
@@ -1344,7 +1344,7 @@ async function loadDnsActivity() {
             const seen = new Map();
             queries.forEach(q => seen.set(q.peer_ip, q.peer_name));
             const currentValue = peerFilter.value;
-            peerFilter.innerHTML = '<option value="">All peers</option>' +
+            peerFilter.innerHTML = '<option value="">All peers/clients</option>' +
                 Array.from(seen.entries()).map(([ip, name]) =>
                     `<option value="${escapeHtml(ip)}">${escapeHtml(name)}</option>`
                 ).join('');
@@ -1354,7 +1354,7 @@ async function loadDnsActivity() {
         if (!tableBody) return;
 
         if (queries.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="3" class="text-center">No DNS activity recorded yet</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="4" class="text-center">No DNS activity recorded yet</td></tr>';
             return;
         }
 
@@ -1362,13 +1362,14 @@ async function loadDnsActivity() {
             <tr>
                 <td>${escapeHtml(new Date(q.timestamp + 'Z').toLocaleString())}</td>
                 <td>${escapeHtml(q.peer_name)}</td>
+                <td>${escapeHtml(q.protocol)}</td>
                 <td>${escapeHtml(q.domain)}</td>
             </tr>
         `).join('');
     } catch (error) {
         console.error('Error loading DNS activity:', error);
         if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading activity</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading activity</td></tr>';
         }
     }
 }

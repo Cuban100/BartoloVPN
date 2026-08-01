@@ -1663,6 +1663,12 @@ async def get_dns_queries(
             {
                 "peer_ip": r.peer_ip,
                 "peer_name": ip_to_name.get(r.peer_ip, r.peer_ip),
+                # Always WireGuard for now - CoreDNS (the only source this
+                # table has) only ever sees WireGuard peers' queries, since
+                # OpenVPN clients are pushed external DNS directly and never
+                # route through it. Included explicitly rather than left
+                # implicit, so the column is honest if that changes later.
+                "protocol": "WireGuard",
                 "domain": r.domain,
                 "timestamp": r.timestamp.isoformat()
             }

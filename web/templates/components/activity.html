@@ -9,7 +9,7 @@
         <h3>Recent DNS Activity</h3>
         <div class="section-actions">
             <select id="activity-peer-filter" class="form-control" style="width: auto;" onchange="loadDnsActivity()">
-                <option value="">All peers</option>
+                <option value="">All peers/clients</option>
             </select>
             <button class="btn btn-secondary" onclick="loadDnsActivity()">
                 <i class="fas fa-sync"></i> Refresh
@@ -22,12 +22,13 @@
             <thead>
                 <tr>
                     <th>Time</th>
-                    <th>Peer</th>
+                    <th>Peers/Clients</th>
+                    <th>Protocol</th>
                     <th>Domain</th>
                 </tr>
             </thead>
             <tbody id="dns-activity-table">
-                <tr><td colspan="3" class="text-center">Loading...</td></tr>
+                <tr><td colspan="4" class="text-center">Loading...</td></tr>
             </tbody>
         </table>
     </div>
