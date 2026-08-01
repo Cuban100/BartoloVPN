@@ -1780,11 +1780,26 @@ async function downloadOpenVPNConfig(clientName) {
     }
 }
 
-// Delete OpenVPN client (placeholder - needs DELETE endpoint)
 async function deleteOpenVPNClient(clientName) {
-    if (confirm(`Are you sure you want to delete OpenVPN client "${clientName}"?`)) {
-        showToast('Delete OpenVPN client functionality not yet implemented', 'info');
-        // TODO: Implement DELETE /vpn/openvpn/clients/{client_name} endpoint
+    if (!confirm(`Are you sure you want to delete OpenVPN client "${clientName}"?\n\nThis action cannot be undone and will remove the client configuration.`)) {
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`/vpn/openvpn/clients/${clientName}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            showToast(`Client "${clientName}" deleted successfully`, 'success');
+            loadOpenVPNClients(); // Refresh the client list
+        } else {
+            const error = await response.json();
+            showToast(`Failed to delete client: ${error.detail}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting OpenVPN client:', error);
+        showToast('Failed to delete client. Check console for details.', 'error');
     }
 }
 

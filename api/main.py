@@ -890,26 +890,23 @@ key-direction 1
                 if os.path.exists(path):
                     os.remove(path)
             
-            # Revoke certificate if using EasyRSA
+            # Revoke the certificate so a copy of the old .ovpn file (already
+            # downloaded, or sitting in someone's inbox) can't still connect.
+            # Same as client creation: easyrsa only exists inside the
+            # openvpn container's own image, so this has to run there via
+            # the exec proxy rather than a local ./easyrsa that never exists.
             try:
-                revoke_script = f"""
-cd {settings.openvpn_config_path}
-if [ -f ./easyrsa ]; then
-    export EASYRSA_BATCH="1"
-    ./easyrsa revoke {client_name}
-    ./easyrsa gen-crl
-fi
-"""
-                process = await asyncio.create_subprocess_shell(
-                    revoke_script,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                exit_code, output = await self._docker_exec(
+                    "bartolo-openvpn",
+                    ["easyrsa", "revoke", client_name],
+                    env=["EASYRSA_BATCH=1"]
                 )
-                stdout, stderr = await process.communicate()
-                
-                if process.returncode != 0:
-                    logger.warning(f"Failed to revoke certificate: {stderr.decode()}")
-            
+                if exit_code != 0:
+                    logger.warning(f"Failed to revoke certificate for {client_name}: {output}")
+                else:
+                    gen_crl_exit, gen_crl_output = await self._docker_exec("bartolo-openvpn", ["easyrsa", "gen-crl"], env=["EASYRSA_BATCH=1"])
+                    if gen_crl_exit != 0:
+                        logger.warning(f"Failed to regenerate CRL after revoking {client_name}: {gen_crl_output}")
             except Exception as e:
                 logger.warning(f"Certificate revocation failed: {e}")
             
