@@ -333,30 +333,40 @@ function updateSystemStatus(data) {
         systemStatus.className = `stat-value ${data.system.status === 'online' ? 'status-healthy' : 'status-warning'}`;
     }
     
-    // Update VPN service statuses
+    // Update VPN service statuses. The backend's "running" here just means
+    // the service is deployed/configured, not a live health check (that's
+    // what the per-protocol page's own status dot and the Monitoring page's
+    // real connection counts are for) - "Installed" says what's actually
+    // being reported instead of implying a live check that isn't happening.
     if (data.vpn) {
-        // WireGuard status
-        const wireguardStatus = document.getElementById('wireguard-status');
-        if (wireguardStatus && data.vpn.wireguard) {
-            wireguardStatus.textContent = data.vpn.wireguard.status || 'Unknown';
-            wireguardStatus.className = `stat-value ${data.vpn.wireguard.status === 'running' ? 'status-healthy' : 'status-warning'}`;
-        }
-        
-        // OpenVPN status
-        const openvpnStatus = document.getElementById('openvpn-status');
-        if (openvpnStatus && data.vpn.openvpn) {
-            openvpnStatus.textContent = data.vpn.openvpn.status || 'Unknown';
-            openvpnStatus.className = `stat-value ${data.vpn.openvpn.status === 'running' ? 'status-healthy' : 'status-warning'}`;
-        }
-        
-        // IKEv2 status
-        const ikev2Status = document.getElementById('ikev2-status');
-        if (ikev2Status && data.vpn.ikev2) {
-            ikev2Status.textContent = data.vpn.ikev2.status || 'Unknown';
-            ikev2Status.className = `stat-value ${data.vpn.ikev2.status === 'running' ? 'status-healthy' : 'status-warning'}`;
+        for (const [protocol, elementId] of [['wireguard', 'wireguard-status'], ['openvpn', 'openvpn-status'], ['ikev2', 'ikev2-status']]) {
+            const el = document.getElementById(elementId);
+            const service = data.vpn[protocol];
+            if (el && service) {
+                const isRunning = service.status === 'running';
+                el.textContent = isRunning ? 'Installed' : (service.status || 'Unknown');
+                el.className = `stat-value ${isRunning ? 'status-healthy' : 'status-warning'}`;
+            }
         }
     }
-    
+
+    // Each protocol page also has its own small status dot in its header
+    // (separate DOM nodes from the Overview cards above, one per page).
+    if (data.vpn) {
+        for (const [protocol, elementId] of [['wireguard', 'wireguard-page-status'], ['openvpn', 'openvpn-page-status'], ['ikev2', 'ikev2-page-status']]) {
+            const container = document.getElementById(elementId);
+            const service = data.vpn[protocol];
+            if (container && service) {
+                const dot = container.querySelector('.status-dot');
+                const text = container.querySelector('.status-text');
+                const isRunning = service.status === 'running';
+                if (dot) dot.className = `status-dot ${isRunning ? 'active' : 'inactive'}`;
+                if (text) text.textContent = isRunning ? 'Installed' : (service.status || 'Unknown');
+            }
+        }
+    }
+
+
     // Update network info
     if (data.bandwidth) {
         const bandwidthUsage = document.getElementById('bandwidth-usage');
@@ -399,45 +409,60 @@ async function loadSystemResources() {
 }
 
 function updateSystemResources(data) {
-    // Update CPU
+    // Update CPU. cpu-progress/cpu-percent are the Overview page's bar+text;
+    // cpu-usage/monitoring-cpu-progress are the Monitoring page's own
+    // separate elements (previously both pages had colliding ids, so only
+    // whichever was first in the DOM ever actually got updated).
     const cpuUsage = data.cpu?.usage || data.cpu_percent || 0;
     const cpuLoad = data.cpu?.load_average || 0;
-    
+
     const cpuUsageEl = document.getElementById('cpu-usage');
+    const cpuPercentEl = document.getElementById('cpu-percent');
     const cpuProgressEl = document.getElementById('cpu-progress');
+    const monitoringCpuProgressEl = document.getElementById('monitoring-cpu-progress');
     const cpuLoadEl = document.getElementById('cpu-load');
-    
+
     if (cpuUsageEl) cpuUsageEl.textContent = `${cpuUsage.toFixed(1)}%`;
+    if (cpuPercentEl) cpuPercentEl.textContent = `${cpuUsage.toFixed(1)}%`;
     if (cpuProgressEl) cpuProgressEl.style.width = `${cpuUsage}%`;
+    if (monitoringCpuProgressEl) monitoringCpuProgressEl.style.width = `${cpuUsage}%`;
     if (cpuLoadEl) cpuLoadEl.textContent = cpuLoad.toFixed(2);
-    
+
     // Update Memory
     const memoryUsage = data.memory?.percent || data.memory_percent || 0;
     const memoryUsed = data.memory?.used_gb || data.memory_used_gb || 0;
     const memoryTotal = data.memory?.total_gb || data.memory_total_gb || 0;
-    
+
     const memoryUsageEl = document.getElementById('memory-usage');
+    const memoryPercentEl = document.getElementById('memory-percent');
     const memoryProgressEl = document.getElementById('memory-progress');
+    const monitoringMemoryProgressEl = document.getElementById('monitoring-memory-progress');
     const memoryUsedEl = document.getElementById('memory-used');
     const memoryTotalEl = document.getElementById('memory-total');
-    
+
     if (memoryUsageEl) memoryUsageEl.textContent = `${memoryUsage.toFixed(1)}%`;
+    if (memoryPercentEl) memoryPercentEl.textContent = `${memoryUsage.toFixed(1)}%`;
     if (memoryProgressEl) memoryProgressEl.style.width = `${memoryUsage}%`;
+    if (monitoringMemoryProgressEl) monitoringMemoryProgressEl.style.width = `${memoryUsage}%`;
     if (memoryUsedEl) memoryUsedEl.textContent = `${memoryUsed.toFixed(1)} GB`;
     if (memoryTotalEl) memoryTotalEl.textContent = `${memoryTotal.toFixed(1)} GB`;
-    
+
     // Update Disk
     const diskUsage = data.disk?.percent || data.disk_percent || 0;
     const diskUsed = data.disk?.used_gb || data.disk_used_gb || 0;
     const diskTotal = data.disk?.total_gb || data.disk_total_gb || 0;
-    
+
     const diskUsageEl = document.getElementById('disk-usage');
+    const diskPercentEl = document.getElementById('disk-percent');
     const diskProgressEl = document.getElementById('disk-progress');
+    const monitoringDiskProgressEl = document.getElementById('monitoring-disk-progress');
     const diskUsedEl = document.getElementById('disk-used');
     const diskTotalEl = document.getElementById('disk-total');
-    
+
     if (diskUsageEl) diskUsageEl.textContent = `${diskUsage.toFixed(1)}%`;
+    if (diskPercentEl) diskPercentEl.textContent = `${diskUsage.toFixed(1)}%`;
     if (diskProgressEl) diskProgressEl.style.width = `${diskUsage}%`;
+    if (monitoringDiskProgressEl) monitoringDiskProgressEl.style.width = `${diskUsage}%`;
     if (diskUsedEl) diskUsedEl.textContent = `${diskUsed.toFixed(1)} GB`;
     if (diskTotalEl) diskTotalEl.textContent = `${diskTotal.toFixed(1)} GB`;
     
@@ -487,12 +512,14 @@ function updateVPNMetrics(vpnData) {
     
     // IKEv2 metrics
     const ikev2Data = vpnData.ikev2 || {};
-    const ikev2ConnectionsEl = document.getElementById('ikev2-connections');
+    const ikev2ConnectionsEl = document.getElementById('ikev2-monitoring-connections');
+    const ikev2PageConnectionsEl = document.getElementById('ikev2-connections');
     const ikev2BandwidthEl = document.getElementById('ikev2-bandwidth');
     const ikev2LatencyEl = document.getElementById('ikev2-latency');
     const ikev2TransferEl = document.getElementById('ikev2-transfer');
-    
+
     if (ikev2ConnectionsEl) ikev2ConnectionsEl.textContent = ikev2Data.connections || 0;
+    if (ikev2PageConnectionsEl) ikev2PageConnectionsEl.textContent = ikev2Data.connections || 0;
     if (ikev2BandwidthEl) ikev2BandwidthEl.textContent = `${(ikev2Data.bandwidth || 0).toFixed(1)} MB/s`;
     if (ikev2LatencyEl) ikev2LatencyEl.textContent = `${ikev2Data.latency || 0}ms`;
     if (ikev2TransferEl) ikev2TransferEl.textContent = `${(ikev2Data.transfer || 0).toFixed(1)} MB`;
@@ -849,16 +876,19 @@ function switchTab(tabName) {
     // Load data when specific tabs are opened
     if (tabName === 'wireguard') {
         loadWireguardPeers();
+        loadDashboardData();
     } else if (tabName === 'users') {
         loadUsers();
     } else if (tabName === 'openvpn') {
         loadOpenVPNClients();
+        loadDashboardData();
     } else if (tabName === 'monitoring') {
         initializeMonitoring();
     } else if (tabName === 'activity') {
         loadDnsActivity();
     } else if (tabName === 'ikev2') {
         loadIkev2Credentials();
+        loadDashboardData();
     } else {
         // Stop monitoring when switching away from monitoring tab
         cleanupMonitoring();

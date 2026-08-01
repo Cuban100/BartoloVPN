@@ -50,7 +50,7 @@
             </div>
             <div class="progress-container">
                 <div class="progress-bar">
-                    <div class="progress-fill cpu" id="cpu-progress" style="width: 0%"></div>
+                    <div class="progress-fill cpu" id="monitoring-cpu-progress" style="width: 0%"></div>
                 </div>
                 <div class="progress-details">
                     <span class="detail-label">Load Average:</span>
@@ -72,7 +72,7 @@
             </div>
             <div class="progress-container">
                 <div class="progress-bar">
-                    <div class="progress-fill memory" id="memory-progress" style="width: 0%"></div>
+                    <div class="progress-fill memory" id="monitoring-memory-progress" style="width: 0%"></div>
                 </div>
                 <div class="progress-details">
                     <span class="detail-label">Used:</span>
@@ -96,7 +96,7 @@
             </div>
             <div class="progress-container">
                 <div class="progress-bar">
-                    <div class="progress-fill disk" id="disk-progress" style="width: 0%"></div>
+                    <div class="progress-fill disk" id="monitoring-disk-progress" style="width: 0%"></div>
                 </div>
                 <div class="progress-details">
                     <span class="detail-label">Used:</span>
@@ -236,13 +236,13 @@
                 </div>
                 <div class="protocol-info">
                     <h4>IKEv2/IPSec</h4>
-                    <div class="protocol-status" id="ikev2-status">
+                    <div class="protocol-status" id="ikev2-monitoring-status">
                         <span class="status-dot" id="ikev2-status-dot"></span>
                         <span id="ikev2-status-text">Checking...</span>
                     </div>
                 </div>
                 <div class="protocol-connections">
-                    <span class="connections-count" id="ikev2-connections">0</span>
+                    <span class="connections-count" id="ikev2-monitoring-connections">0</span>
                     <span class="connections-label">Connections</span>
                 </div>
             </div>

@@ -7,7 +7,7 @@
     <div class="content-section">
         <div class="section-header">
             <h3>IKEv2 Status</h3>
-            <div class="status-indicator" id="ikev2-status">
+            <div class="status-indicator" id="ikev2-page-status">
                 <span class="status-dot"></span>
                 <span class="status-text">Loading...</span>
             </div>
@@ -57,11 +57,11 @@
             <div class="config-item">
                 <label>Username:</label>
                 <div class="config-value-container">
-                    <span class="config-value masked" id="ikev2-username" data-value="vpnuser">vpn•••</span>
-                    <button class="toggle-visibility-btn" onclick="toggleConfigVisibility('ikev2-username')" title="Show/Hide Username">
+                    <span class="config-value masked" id="ikev2-username-display" data-value="vpnuser">vpn•••</span>
+                    <button class="toggle-visibility-btn" onclick="toggleConfigVisibility('ikev2-username-display')" title="Show/Hide Username">
                         <i class="fas fa-eye"></i>
                     </button>
-                    <button class="copy-btn small" onclick="copyConfigValue('ikev2-username')" title="Copy Username">
+                    <button class="copy-btn small" onclick="copyConfigValue('ikev2-username-display')" title="Copy Username">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
