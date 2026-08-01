@@ -2159,20 +2159,25 @@ async def list_openvpn_clients(current_user: dict = Depends(get_current_user)):
     try:
         clients_dir = f"{settings.openvpn_config_path}/clients"
         clients = []
-        
+
+        # Real connection state from the server's own status log (same
+        # source get_openvpn_client_stats already uses for the Monitoring
+        # page) - this was hardcoded to "inactive" always before.
+        connected_names = {c['name'] for c in await vpn_manager.get_openvpn_client_stats()}
+
         if os.path.exists(clients_dir):
             for filename in os.listdir(clients_dir):
                 if filename.endswith('.ovpn'):
                     client_name = filename[:-5]  # Remove .ovpn extension
                     config_path = os.path.join(clients_dir, filename)
-                    
+
                     clients.append({
                         "name": client_name,
                         "config_file": filename,
                         "created_at": os.path.getctime(config_path),
-                        "status": "inactive"  # TODO: Add real status check
+                        "status": "active" if client_name in connected_names else "inactive"
                     })
-        
+
         return {"clients": clients}
     except Exception as e:
         logger.error(f"Error listing OpenVPN clients: {e}")
