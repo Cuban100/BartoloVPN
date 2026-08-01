@@ -247,6 +247,55 @@ class VPNManager:
             })
         return peers
 
+    async def get_openvpn_client_stats(self) -> List[Dict[str, Any]]:
+        """Real per-client OpenVPN stats from the server's own status log.
+        vpn-api doesn't share a network namespace with the openvpn container
+        (unlike wireguard), so this has to go through the exec proxy rather
+        than reading a shared/local file."""
+        exit_code, output = await self._docker_exec("bartolo-openvpn", ["cat", "/tmp/openvpn-status.log"])
+        if exit_code != 0:
+            return []
+
+        virtual_ip_by_name = {}
+        in_routing_table = False
+        for line in output.splitlines():
+            if line.startswith("ROUTING TABLE"):
+                in_routing_table = True
+                continue
+            if line.startswith("GLOBAL STATS"):
+                break
+            if in_routing_table and "," in line:
+                parts = line.split(",")
+                if len(parts) >= 2 and parts[0] != "Virtual Address":
+                    virtual_ip_by_name[parts[1]] = parts[0]
+
+        clients = []
+        in_client_list = False
+        for line in output.splitlines():
+            if line.startswith("Common Name,Real Address"):
+                in_client_list = True
+                continue
+            if line.startswith("ROUTING TABLE"):
+                break
+            if in_client_list and "," in line:
+                parts = line.split(",")
+                if len(parts) < 5:
+                    continue
+                name, real_address, rx_bytes, tx_bytes, connected_since = parts[:5]
+                try:
+                    connected_at = datetime.strptime(connected_since, "%a %b %d %H:%M:%S %Y")
+                except ValueError:
+                    connected_at = None
+                clients.append({
+                    "name": name,
+                    "real_address": real_address,
+                    "virtual_ip": virtual_ip_by_name.get(name),
+                    "rx_bytes": int(rx_bytes),
+                    "tx_bytes": int(tx_bytes),
+                    "connected_at": connected_at,
+                })
+        return clients
+
     async def ping_peer_ms(self, ip: str) -> Optional[float]:
         """Real round-trip latency to a peer over the tunnel, in ms.
         Returns None if the peer doesn't respond to ICMP (some clients
@@ -260,6 +309,18 @@ class VPNManager:
             if proc.returncode != 0:
                 return None
             match = re.search(r'time=([\d.]+)', stdout.decode())
+            return float(match.group(1)) if match else None
+        except Exception:
+            return None
+
+    async def ping_openvpn_client_ms(self, virtual_ip: str) -> Optional[float]:
+        """Same idea as ping_peer_ms, but has to run inside the openvpn
+        container since vpn-api has no direct route to its tun0 subnet."""
+        try:
+            exit_code, output = await self._docker_exec("bartolo-openvpn", ["ping", "-c", "1", "-W", "1", virtual_ip])
+            if exit_code != 0:
+                return None
+            match = re.search(r'time=([\d.]+)', output)
             return float(match.group(1)) if match else None
         except Exception:
             return None
@@ -1395,6 +1456,30 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
             if valid_pings:
                 wg_latency_ms = round(sum(valid_pings) / len(valid_pings), 1)
 
+        # Real OpenVPN client stats from the server's own status log, same
+        # honesty rules as WireGuard above: bandwidth from a live delta,
+        # latency from real pings, zero/false rather than a guess if there's
+        # nothing connected or nothing responds.
+        ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+        ovpn_total_bytes = sum(c['rx_bytes'] + c['tx_bytes'] for c in ovpn_clients)
+        ovpn_transfer_mb = ovpn_total_bytes / (1024 ** 2)
+
+        ovpn_bandwidth_mbps = 0.0
+        ovpn_prev = getattr(vpn_manager, '_last_ovpn_transfer_sample', None)
+        if ovpn_prev is not None:
+            elapsed = now_monotonic - ovpn_prev['t']
+            if elapsed > 0:
+                ovpn_delta_bytes = ovpn_total_bytes - ovpn_prev['bytes']
+                ovpn_bandwidth_mbps = max(0.0, (ovpn_delta_bytes / elapsed) / (1024 ** 2))
+        vpn_manager._last_ovpn_transfer_sample = {'t': now_monotonic, 'bytes': ovpn_total_bytes}
+
+        ovpn_latency_ms = 0
+        if ovpn_clients:
+            pings = await asyncio.gather(*[vpn_manager.ping_openvpn_client_ms(c['virtual_ip']) for c in ovpn_clients if c['virtual_ip']])
+            valid_pings = [p for p in pings if p is not None]
+            if valid_pings:
+                ovpn_latency_ms = round(sum(valid_pings) / len(valid_pings), 1)
+
         return {
             "cpu_percent": round(cpu_percent, 1),
             "memory_percent": round(memory_percent, 1),
@@ -1416,10 +1501,15 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
                     "bandwidth": round(wg_bandwidth_mbps, 2),
                     "latency": wg_latency_ms,
                 },
-                # OpenVPN/IKEv2 don't currently have a live stats source
-                # wired up - reporting inactive/zero here is honest; it was
-                # previously a hardcoded "running" placeholder either way.
-                "openvpn": {"active": False, "connections": 0, "transfer": 0, "bandwidth": 0, "latency": 0},
+                "openvpn": {
+                    "active": len(ovpn_clients) > 0,
+                    "connections": len(ovpn_clients),
+                    "transfer": round(ovpn_transfer_mb, 2),
+                    "bandwidth": round(ovpn_bandwidth_mbps, 2),
+                    "latency": ovpn_latency_ms,
+                },
+                # IKEv2 doesn't have a live stats source wired up yet -
+                # reporting inactive/zero here is honest, not a guess.
                 "ikev2": {"active": False, "connections": 0, "transfer": 0, "bandwidth": 0, "latency": 0},
             },
         }
@@ -1452,14 +1542,33 @@ async def get_active_connections(current_user: dict = Depends(get_current_user))
             "data_transfer": f"{total_mb:.1f} MB",
             "status": "Connected",
         })
+
+    ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+    for c in ovpn_clients:
+        total_mb = (c['rx_bytes'] + c['tx_bytes']) / (1024 ** 2)
+        connections.append({
+            "id": c['name'],
+            "username": c['name'],
+            "protocol": "OpenVPN",
+            "ip_address": c['virtual_ip'] or c['real_address'],
+            "connected_since": c['connected_at'].isoformat() if c['connected_at'] else None,
+            "data_transfer": f"{total_mb:.1f} MB",
+            "status": "Connected",
+        })
+
     return connections
 
 @app.delete("/api/system/connections/{client_id}")
 async def disconnect_client(client_id: str, current_user: dict = Depends(get_current_user)):
-    """The Monitoring page's per-row "Disconnect" button. WireGuard has no
-    concept of severing an active session without removing the peer (it's
-    stateless UDP - the peer would just re-handshake), so this removes the
-    peer's registration, matching what "disconnect" actually accomplishes."""
+    """The Monitoring page's per-row "Disconnect" button. Neither protocol
+    has a concept of severing an active session without removing the peer
+    (WireGuard is stateless UDP, OpenVPN would just reconnect), so this
+    removes the registration, matching what "disconnect" actually
+    accomplishes. The connections table mixes both protocols, so figure out
+    which one this id actually belongs to rather than assuming WireGuard."""
+    ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+    if any(c['name'] == client_id for c in ovpn_clients):
+        return await vpn_manager.delete_openvpn_client(client_id)
     return await vpn_manager.delete_wireguard_peer(client_id)
 
 @app.get("/api/dns/queries")
