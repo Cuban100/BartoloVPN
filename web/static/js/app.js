@@ -1105,18 +1105,22 @@ function closeAddPeerModal() {
 // Edit peer functionality
 async function editPeer(peerName) {
     console.log('Edit peer called with peerName:', peerName);
-    
+
     try {
-        console.log('Fetching peer data...');
-        // For now, we'll populate with the peer name and default values
-        // In a real implementation, you'd fetch the current peer configuration
-        
-        // Populate the edit form with peer data
+        // Read the peer's actual saved config so the form starts from its
+        // real current AllowedIPs, not a hardcoded guess.
+        let allowedIPs = '0.0.0.0/0';
+        const configResponse = await apiFetch(`/vpn/wireguard/peers/${peerName}/config`);
+        if (configResponse.ok) {
+            const configText = await configResponse.text();
+            const match = configText.match(/^AllowedIPs\s*=\s*(.+)$/m);
+            if (match) allowedIPs = match[1].trim();
+        }
+
         document.getElementById('edit-peer-current-name').value = peerName;
         document.getElementById('edit-peer-name').value = peerName;
-        document.getElementById('edit-peer-allowed-ips').value = '0.0.0.0/0';
-        
-        // Show the edit modal
+        document.getElementById('edit-peer-allowed-ips').value = allowedIPs;
+
         const modal = document.getElementById('edit-peer-modal');
         if (modal) {
             modal.style.display = 'block';
@@ -1124,7 +1128,7 @@ async function editPeer(peerName) {
         } else {
             console.error('Edit peer modal not found');
         }
-        
+
     } catch (error) {
         console.error('Error loading peer data:', error);
         showToast('Failed to load peer data', 'error');
@@ -1224,18 +1228,22 @@ async function handleEditPeer(event) {
     const currentName = formData.get('current-name');
     const newName = formData.get('peer-name');
     const allowedIPs = formData.get('peer-allowed-ips') || "0.0.0.0/0";
-    
-    // For now, since we don't have a PUT endpoint, we'll show a message
-    // In a real implementation, you would call a PUT endpoint
+
     try {
-        // TODO: Implement PUT /vpn/wireguard/peers/{peer_name} endpoint
-        showToast('Edit functionality will be implemented with API endpoint', 'info');
-        console.log('Edit peer data:', { currentName, newName, allowedIPs });
-        
-        closeEditPeerModal();
-        // In a real implementation, you would reload the peers table
-        // loadWireguardPeers();
-        
+        const response = await apiFetch(`/vpn/wireguard/peers/${currentName}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ peer_name: newName, allowed_ips: allowedIPs })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast(`Peer updated successfully`, 'success');
+            closeEditPeerModal();
+            loadWireguardPeers();
+        } else {
+            showToast(`Failed to update peer: ${data.detail}`, 'error');
+        }
     } catch (error) {
         console.error('Error editing peer:', error);
         showToast('Error editing peer', 'error');

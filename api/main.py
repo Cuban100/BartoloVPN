@@ -103,6 +103,13 @@ class WireGuardPeerCreate(BaseModel):
     allowed_ips: str = "0.0.0.0/0"
     dns_servers: str = "1.1.1.1,8.8.8.8"
 
+class WireGuardPeerUpdate(BaseModel):
+    """Rename a peer and/or change its own AllowedIPs (split-tunnel
+    routing on the client's side - not the server's fixed /32 registration,
+    which never changes)."""
+    peer_name: str = Field(..., min_length=3, max_length=4)
+    allowed_ips: str = "0.0.0.0/0"
+
 class OpenVPNClientCreate(BaseModel):
     """OpenVPN client creation model"""
     client_name: str = Field(..., min_length=3, max_length=50)
@@ -561,6 +568,44 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
         buffer.seek(0)
         return base64.b64encode(buffer.getvalue()).decode()
     
+    async def update_wireguard_peer(self, peer_name: str, new_name: str, allowed_ips: str) -> Dict[str, Any]:
+        """Rename a peer's saved config and/or change its own AllowedIPs.
+        Purely bookkeeping on the app's side - WireGuard itself only knows
+        peers by public key, and the server's per-peer registration always
+        keeps its fixed /32, so nothing here touches the live interface or
+        needs a resync."""
+        async with self.wireguard_peer_lock:
+            peers_dir = f"{settings.wireguard_config_path}/peers"
+            old_path = f"{peers_dir}/{peer_name}.conf"
+            new_path = f"{peers_dir}/{new_name}.conf"
+
+            if not os.path.exists(old_path):
+                raise HTTPException(status_code=404, detail=f"Peer {peer_name} not found")
+
+            if new_name != peer_name and os.path.exists(new_path):
+                raise HTTPException(status_code=409, detail=f"A peer named {new_name} already exists")
+
+            with open(old_path, 'r') as f:
+                content = f.read()
+            content = re.sub(r'^AllowedIPs = .*$', f'AllowedIPs = {allowed_ips}', content, flags=re.MULTILINE)
+
+            with open(new_path, 'w') as f:
+                f.write(content)
+            if new_name != peer_name:
+                os.remove(old_path)
+
+            # Keep the server config's comment tag in sync so delete-by-name
+            # (which matches on "# {peer_name}") still finds this peer.
+            server_config = f"{settings.wireguard_config_path}/wg_confs/wg0.conf"
+            if new_name != peer_name and os.path.exists(server_config):
+                with open(server_config, 'r') as f:
+                    server_content = f.read()
+                server_content = server_content.replace(f"# {peer_name}\n", f"# {new_name}\n")
+                with open(server_config, 'w') as f:
+                    f.write(server_content)
+
+            return {"message": f"Peer {peer_name} updated successfully", "peer_name": new_name}
+
     async def delete_wireguard_peer(self, peer_name: str) -> Dict[str, str]:
         """Delete WireGuard peer"""
         async with self.wireguard_peer_lock:
@@ -2078,6 +2123,15 @@ async def get_wireguard_peer_qrcode(
 
     qr_code = await vpn_manager._generate_qr_code(config_content)
     return {"peer_name": peer_name, "qr_code": qr_code}
+
+@app.put("/vpn/wireguard/peers/{peer_name}")
+async def update_wireguard_peer(
+    peer_name: str,
+    update: WireGuardPeerUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Rename a WireGuard peer and/or change its AllowedIPs"""
+    return await vpn_manager.update_wireguard_peer(peer_name, update.peer_name, update.allowed_ips)
 
 @app.delete("/vpn/wireguard/peers/{peer_name}")
 async def delete_wireguard_peer(
