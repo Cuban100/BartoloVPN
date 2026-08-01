@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     wireguard-tools \
     iproute2 \
+    iputils-ping \
     openvpn \
     strongswan \
     qrencode \

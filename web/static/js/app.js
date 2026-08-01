@@ -512,10 +512,10 @@ function updateProtocolStatus(protocol, isActive) {
     
     if (statusDot && statusText) {
         if (isActive) {
-            statusDot.className = 'status-indicator active';
+            statusDot.className = 'status-dot active';
             statusText.textContent = 'Active';
         } else {
-            statusDot.className = 'status-indicator inactive';
+            statusDot.className = 'status-dot inactive';
             statusText.textContent = 'Inactive';
         }
     }

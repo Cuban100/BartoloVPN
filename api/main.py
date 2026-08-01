@@ -5,6 +5,7 @@ Handles VPN configuration and management for WireGuard, OpenVPN, and IKEv2
 """
 
 import os
+import re
 import json
 import asyncio
 import subprocess
@@ -44,6 +45,7 @@ from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import psutil
+import aiohttp
 # import netifaces  # Removed due to build issues - using psutil for network info instead
 
 # Import configuration
@@ -141,7 +143,7 @@ from database import (
     AsyncSessionLocal, init_db, create_default_admin, create_default_endpoints, get_db
 )
 from ip_rotation import ip_rotation_service
-from dns_activity import dns_activity_poller
+from dns_activity import dns_activity_poller, _demux_docker_log_stream
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -244,6 +246,23 @@ class VPNManager:
                 'tx_bytes': int(tx),
             })
         return peers
+
+    async def ping_peer_ms(self, ip: str) -> Optional[float]:
+        """Real round-trip latency to a peer over the tunnel, in ms.
+        Returns None if the peer doesn't respond to ICMP (some clients
+        block it) rather than faking a number."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                'ping', '-c', '1', '-W', '1', ip,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2)
+            if proc.returncode != 0:
+                return None
+            match = re.search(r'time=([\d.]+)', stdout.decode())
+            return float(match.group(1)) if match else None
+        except Exception:
+            return None
 
     async def get_wireguard_status(self) -> VPNStatus:
         """Get WireGuard connection status"""
@@ -617,8 +636,57 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
                 last_updated=datetime.now()
             )
     
-    async def create_openvpn_client(self, client_name: str, user_id: int) -> Dict[str, Any]:
+    async def _docker_exec(self, container: str, cmd: List[str], env: Optional[List[str]] = None) -> tuple:
+        """Run a command inside another container via the scoped docker-log-proxy
+        (container list/inspect/logs/exec only - see docker-compose.yml).
+        Needed because the openvpn container's easyrsa toolchain doesn't
+        exist anywhere else. Returns (exit_code, combined_output)."""
+        proxy_url = "http://127.0.0.1:2375"
+        async with aiohttp.ClientSession() as session:
+            create_body = {
+                "Cmd": cmd,
+                "Env": env or [],
+                "AttachStdout": True,
+                "AttachStderr": True,
+            }
+            async with session.post(
+                f"{proxy_url}/containers/{container}/exec",
+                json=create_body,
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise HTTPException(status_code=502, detail=f"docker exec create failed ({resp.status}): {text}")
+                exec_id = (await resp.json())["Id"]
+
+            async with session.post(
+                f"{proxy_url}/exec/{exec_id}/start",
+                json={"Detach": False, "Tty": False},
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise HTTPException(status_code=502, detail=f"docker exec start failed ({resp.status}): {text}")
+                raw = await resp.read()
+                output = _demux_docker_log_stream(raw)
+
+            async with session.get(
+                f"{proxy_url}/exec/{exec_id}/json",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                exit_code = (await resp.json()).get("ExitCode", -1)
+
+        return exit_code, output
+
+    async def create_openvpn_client(self, client_name: str, user_id: int, protocol: str = "udp", cipher: str = "AES-256-GCM") -> Dict[str, Any]:
         """Create a new OpenVPN client configuration"""
+        if protocol != "udp":
+            # The openvpn container's server config (scripts/init-openvpn-proper.sh)
+            # only ever sets up a single UDP listener, and docker-compose.yml
+            # only publishes 1194/udp - a "tcp" client config would look
+            # valid but could never actually connect. Reject rather than
+            # hand back something silently broken.
+            raise HTTPException(status_code=400, detail="Only UDP is supported - the OpenVPN server isn't configured with a TCP listener")
         try:
             logger.info(f"Creating OpenVPN client: {client_name} for user {user_id}")
             
@@ -630,62 +698,31 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
             pki_dir = f"{settings.openvpn_config_path}/pki"
             ca_cert_path = f"{pki_dir}/ca.crt"
             ta_key_path = f"{pki_dir}/ta.key"
-            
+
             if not os.path.exists(ca_cert_path) or not os.path.exists(ta_key_path):
-                # Create basic PKI structure for demo purposes
-                logger.warning("PKI not fully initialized, creating demo configuration")
-                os.makedirs(pki_dir, exist_ok=True)
-                os.makedirs(f"{pki_dir}/issued", exist_ok=True)
-                os.makedirs(f"{pki_dir}/private", exist_ok=True)
-                
-                # Create demo CA certificate
-                demo_ca = """-----BEGIN CERTIFICATE-----
-MIIC5TCCAc2gAwIBAgIJAKQ+QQ9H8F1BMA0GCSqGSIb3DQEBCwUAMDExCzAJBgNV
-BAYTAlVTMQswCQYDVQQIDAJOWTEMMAoGA1UEBwwDTllDMQcwBQYDVQQKDAwtMA0G
-CSqGSIb3DQEBCwUAA4IBAQCdemo+demo+demo+demo+demo+demo+demo+demo+
------END CERTIFICATE-----"""
-                
-                demo_key = """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDemo+Demo+Demo
-Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo+Demo
------END PRIVATE KEY-----"""
-                
-                demo_ta = """-----BEGIN OpenVPN Static key V1-----
-demo demo demo demo demo demo demo demo demo demo demo demo demo demo demo
-demo demo demo demo demo demo demo demo demo demo demo demo demo demo demo
------END OpenVPN Static key V1-----"""
-                
-                with open(ca_cert_path, 'w') as f:
-                    f.write(demo_ca)
-                with open(f"{pki_dir}/private/{client_name}.key", 'w') as f:
-                    f.write(demo_key)
-                with open(f"{pki_dir}/issued/{client_name}.crt", 'w') as f:
-                    f.write(demo_ca)  # Use same cert for demo
-                with open(ta_key_path, 'w') as f:
-                    f.write(demo_ta)
-            else:
-                # Try to generate real certificate if PKI exists
-                build_client_script = f"""
-cd {settings.openvpn_config_path}
-export EASYRSA_REQ_CN="{client_name}"
-export EASYRSA_BATCH="1"
-if [ -f ./easyrsa ]; then
-    ./easyrsa gen-req {client_name} nopass
-    ./easyrsa sign-req client {client_name}
-fi
-"""
-                
-                process = await asyncio.create_subprocess_shell(
-                    build_client_script,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                # The openvpn container (kylemanna/openvpn) initializes its
+                # own PKI on first boot via scripts/init-openvpn-proper.sh -
+                # if that hasn't happened yet, there's nothing to sign
+                # against and no config that would actually work.
+                raise HTTPException(
+                    status_code=503,
+                    detail="OpenVPN PKI not initialized yet - the openvpn container should create ca.crt/ta.key on startup, check its logs"
                 )
-                stdout, stderr = await process.communicate()
-                
-                if process.returncode != 0:
-                    logger.warning(f"Failed to generate client certificate with easy-rsa, using demo config: {stderr.decode()}")
-            
-            # Read certificate files (or use demo ones)
+            else:
+                # The easyrsa toolchain used to create the CA only exists
+                # inside the openvpn container's own image, not here or
+                # anywhere in the shared config volume - so the actual cert
+                # signing has to run there, via the scoped exec proxy.
+                exit_code, output = await self._docker_exec(
+                    "bartolo-openvpn",
+                    ["easyrsa", "build-client-full", client_name, "nopass"],
+                    env=["EASYRSA_BATCH=1"]
+                )
+                if exit_code != 0:
+                    logger.error(f"easyrsa build-client-full failed (exit {exit_code}): {output}")
+                    raise HTTPException(status_code=500, detail=f"Certificate generation failed: {output.strip() or 'unknown easyrsa error'}")
+
+            # Read certificate files
             client_cert_path = f"{pki_dir}/issued/{client_name}.crt"
             client_key_path = f"{pki_dir}/private/{client_name}.key"
             
@@ -705,13 +742,13 @@ fi
             # Create client configuration
             client_config = f"""client
 dev tun
-proto {settings.openvpn_protocol}
+proto {protocol}
 remote {settings.server_ip} {settings.openvpn_port}
 resolv-retry infinite
 nobind
 persist-key
 persist-tun
-cipher {settings.openvpn_cipher}
+cipher {cipher}
 auth {settings.openvpn_auth}
 auth-nocache
 verb 3
@@ -1303,11 +1340,11 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
         wg_peers = await vpn_manager.get_wireguard_peer_stats()
         now = datetime.now().timestamp()
         wg_active_peers = [p for p in wg_peers if p['latest_handshake'] and (now - p['latest_handshake']) < 180]
-        wg_transfer_mb = sum(p['rx_bytes'] + p['tx_bytes'] for p in wg_peers) / (1024 ** 2)
+        wg_total_bytes = sum(p['rx_bytes'] + p['tx_bytes'] for p in wg_peers)
+        wg_transfer_mb = wg_total_bytes / (1024 ** 2)
 
-        # Network throughput: instantaneous rate computed from the delta
-        # since the last time this endpoint was called (polled every few
-        # seconds by the dashboard, so this stays reasonably live).
+        # System-wide network throughput (all interfaces combined - includes
+        # non-VPN traffic like the API's own HTTP responses).
         net = psutil.net_io_counters()
         now_monotonic = asyncio.get_event_loop().time()
         speed_mbps = 0.0
@@ -1318,6 +1355,29 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
                 delta_bytes = (net.bytes_sent + net.bytes_recv) - prev['bytes']
                 speed_mbps = max(0.0, (delta_bytes / elapsed) / (1024 ** 2))
         vpn_manager._last_network_sample = {'t': now_monotonic, 'bytes': net.bytes_sent + net.bytes_recv}
+
+        # WireGuard-specific throughput, from the delta of the peers' own
+        # transfer counters - more accurate than the system-wide figure
+        # above since it excludes non-tunnel traffic entirely.
+        wg_bandwidth_mbps = 0.0
+        wg_prev = getattr(vpn_manager, '_last_wg_transfer_sample', None)
+        if wg_prev is not None:
+            elapsed = now_monotonic - wg_prev['t']
+            if elapsed > 0:
+                wg_delta_bytes = wg_total_bytes - wg_prev['bytes']
+                wg_bandwidth_mbps = max(0.0, (wg_delta_bytes / elapsed) / (1024 ** 2))
+        vpn_manager._last_wg_transfer_sample = {'t': now_monotonic, 'bytes': wg_total_bytes}
+
+        # Real round-trip latency over the tunnel, averaged across whichever
+        # active peers actually respond to ICMP (some clients block it,
+        # which is fine - those just don't contribute to the average rather
+        # than faking a number).
+        wg_latency_ms = 0
+        if wg_active_peers:
+            pings = await asyncio.gather(*[vpn_manager.ping_peer_ms(p['ip']) for p in wg_active_peers if p['ip']])
+            valid_pings = [p for p in pings if p is not None]
+            if valid_pings:
+                wg_latency_ms = round(sum(valid_pings) / len(valid_pings), 1)
 
         return {
             "cpu_percent": round(cpu_percent, 1),
@@ -1337,8 +1397,8 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
                     "active": len(wg_active_peers) > 0,
                     "connections": len(wg_active_peers),
                     "transfer": round(wg_transfer_mb, 2),
-                    "bandwidth": round(speed_mbps, 2) if wg_active_peers else 0,
-                    "latency": 0,
+                    "bandwidth": round(wg_bandwidth_mbps, 2),
+                    "latency": wg_latency_ms,
                 },
                 # OpenVPN/IKEv2 don't currently have a live stats source
                 # wired up - reporting inactive/zero here is honest; it was
@@ -1936,7 +1996,7 @@ async def create_openvpn_client(
     if current_user["role"] != "admin" and client.user_id != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    return await vpn_manager.create_openvpn_client(client.client_name, client.user_id)
+    return await vpn_manager.create_openvpn_client(client.client_name, client.user_id, client.protocol, client.cipher)
 
 @app.get("/vpn/openvpn/clients/{client_name}/config")
 async def download_openvpn_config(

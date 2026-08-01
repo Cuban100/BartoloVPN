@@ -86,21 +86,24 @@ services:
 
 
 
-  # Read-only Docker log access, scoped to container-log-fetching only.
-  # Needed because CoreDNS's query log (used for the dashboard's DNS
-  # Activity tab) only ever writes to the wireguard container's stdout.
+  # Scoped Docker API access for vpn-api: container log fetching (DNS
+  # Activity tab, reads wireguard's stdout) and exec (OpenVPN client
+  # certs have to be generated with the openvpn container's own easyrsa -
+  # that toolchain isn't present anywhere else, including vpn-api itself).
+  # Every other resource type stays disabled - this is not a general docker
+  # socket passthrough, only container list/inspect/logs/exec.
   docker-log-proxy:
     image: tecnativa/docker-socket-proxy:latest
     container_name: bartolo-docker-log-proxy
     environment:
       - CONTAINERS=1
-      - POST=0
+      - POST=1
       - EVENTS=0
       - INFO=0
       - NETWORKS=0
       - IMAGES=0
       - VOLUMES=0
-      - EXEC=0
+      - EXEC=1
       - SERVICES=0
       - SWARM=0
       - SYSTEM=0

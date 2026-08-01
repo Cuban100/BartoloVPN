@@ -2232,6 +2232,15 @@ body:has(.login-container) .footer,
     animation: pulse-danger 2s infinite;
 }
 
+.status-dot.active {
+    background: var(--success-color);
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+
+.status-dot.inactive {
+    background: var(--danger-color);
+}
+
 @keyframes pulse-danger {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
@@ -2496,22 +2505,6 @@ body:has(.login-container) .footer,
     align-items: center;
     gap: var(--spacing-xs);
     font-size: 0.8rem;
-}
-
-.status-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-muted);
-}
-
-.status-indicator.active {
-    background: var(--success-color);
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
-}
-
-.status-indicator.inactive {
-    background: var(--danger-color);
 }
 
 .protocol-connections {
