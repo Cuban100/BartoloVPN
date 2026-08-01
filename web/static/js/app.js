@@ -2235,7 +2235,7 @@ function handleOutsideClick(event) {
 
 // WireGuard Uninstall Functions
 function openRemovePeersModal() {
-    document.getElementById('remove-peers-modal').style.display = 'block';
+    document.getElementById('remove-all-peers-modal').style.display = 'block';
     document.getElementById('remove-peers-confirmation').value = '';
     document.getElementById('confirm-remove-peers-btn').disabled = true;
 }
@@ -2261,7 +2261,7 @@ function validateUninstallWireguardConfirmation() {
 async function removeAllWireguardPeers() {
     try {
         showToast('Removing all WireGuard peers...', 'warning');
-        const response = await apiFetch('/api/vpn/wireguard/clients', {
+        const response = await apiFetch('/vpn/wireguard/clients/all', {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -2271,7 +2271,7 @@ async function removeAllWireguardPeers() {
         const data = await response.json();
         if (response.ok) {
             showToast('All WireGuard peers removed successfully', 'success');
-            closeModal('remove-peers-modal');
+            closeModal('remove-all-peers-modal');
             loadWireguardPeers();
         } else {
             showToast(`Error removing peers: ${data.detail}`, 'error');
@@ -2285,8 +2285,8 @@ async function removeAllWireguardPeers() {
 async function uninstallWireguard() {
     try {
         showToast('Uninstalling WireGuard service...', 'warning');
-        const response = await apiFetch('/api/vpn/wireguard/uninstall', {
-            method: 'DELETE',
+        const response = await apiFetch('/vpn/wireguard/uninstall', {
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -2308,7 +2308,7 @@ async function uninstallWireguard() {
 
 // OpenVPN Uninstall Functions
 function openRemoveOpenVPNClientsModal() {
-    document.getElementById('remove-openvpn-clients-modal').style.display = 'block';
+    document.getElementById('remove-all-openvpn-clients-modal').style.display = 'block';
     document.getElementById('remove-openvpn-clients-confirmation').value = '';
     document.getElementById('confirm-remove-openvpn-clients-btn').disabled = true;
 }
@@ -2334,7 +2334,7 @@ function validateUninstallOpenVPNConfirmation() {
 async function removeAllOpenVPNClients() {
     try {
         showToast('Removing all OpenVPN clients...', 'warning');
-        const response = await apiFetch('/api/vpn/openvpn/clients', {
+        const response = await apiFetch('/vpn/openvpn/clients/all', {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -2344,7 +2344,7 @@ async function removeAllOpenVPNClients() {
         const data = await response.json();
         if (response.ok) {
             showToast('All OpenVPN clients removed successfully', 'success');
-            closeModal('remove-openvpn-clients-modal');
+            closeModal('remove-all-openvpn-clients-modal');
             loadOpenVPNClients();
         } else {
             showToast(`Error removing clients: ${data.detail}`, 'error');
@@ -2358,8 +2358,8 @@ async function removeAllOpenVPNClients() {
 async function uninstallOpenVPN() {
     try {
         showToast('Uninstalling OpenVPN service...', 'warning');
-        const response = await apiFetch('/api/vpn/openvpn/uninstall', {
-            method: 'DELETE',
+        const response = await apiFetch('/vpn/openvpn/uninstall', {
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -2381,7 +2381,7 @@ async function uninstallOpenVPN() {
 
 // IKEv2 Uninstall Functions
 function openRemoveIKEv2ClientsModal() {
-    document.getElementById('remove-ikev2-clients-modal').style.display = 'block';
+    document.getElementById('remove-all-ikev2-clients-modal').style.display = 'block';
     document.getElementById('remove-ikev2-clients-confirmation').value = '';
     document.getElementById('confirm-remove-ikev2-clients-btn').disabled = true;
 }
@@ -2407,7 +2407,7 @@ function validateUninstallIKEv2Confirmation() {
 async function removeAllIKEv2Clients() {
     try {
         showToast('Removing all IKEv2 clients...', 'warning');
-        const response = await apiFetch('/api/vpn/ikev2/clients', {
+        const response = await apiFetch('/vpn/ikev2/clients/all', {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -2417,7 +2417,7 @@ async function removeAllIKEv2Clients() {
         const data = await response.json();
         if (response.ok) {
             showToast('All IKEv2 clients removed successfully', 'success');
-            closeModal('remove-ikev2-clients-modal');
+            closeModal('remove-all-ikev2-clients-modal');
             loadIKEv2Users();
         } else {
             showToast(`Error removing clients: ${data.detail}`, 'error');
@@ -2431,8 +2431,8 @@ async function removeAllIKEv2Clients() {
 async function uninstallIKEv2() {
     try {
         showToast('Uninstalling IKEv2 service...', 'warning');
-        const response = await apiFetch('/api/vpn/ikev2/uninstall', {
-            method: 'DELETE',
+        const response = await apiFetch('/vpn/ikev2/uninstall', {
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },

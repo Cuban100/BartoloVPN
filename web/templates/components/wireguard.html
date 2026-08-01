@@ -43,12 +43,6 @@
                 <button class="btn btn-primary" onclick="showAddPeerModal()">
                     <i class="fas fa-plus"></i> Add Peer
                 </button>
-                <button class="btn btn-warning" onclick="showRemoveAllPeersModal()">
-                    <i class="fas fa-trash-alt"></i> Remove All Peers
-                </button>
-                <button class="btn btn-danger" onclick="showUninstallWireGuardModal()">
-                    <i class="fas fa-unlink"></i> Uninstall WireGuard
-                </button>
             </div>
         </div>
         
@@ -83,7 +77,7 @@
                     <h4>Remove All Peers</h4>
                     <p>Permanently remove all WireGuard peer configurations. This will disconnect all clients.</p>
                 </div>
-                <button class="btn btn-warning" onclick="showRemoveAllPeersModal()">
+                <button class="btn btn-warning" onclick="openRemovePeersModal()">
                     <i class="fas fa-users-slash"></i> Remove All Peers
                 </button>
             </div>
@@ -93,7 +87,7 @@
                     <h4>Uninstall WireGuard</h4>
                     <p>Completely remove WireGuard service, including all configurations and peer data. This action cannot be undone.</p>
                 </div>
-                <button class="btn btn-danger" onclick="showUninstallWireGuardModal()">
+                <button class="btn btn-danger" onclick="openUninstallWireguardModal()">
                     <i class="fas fa-unlink"></i> Uninstall WireGuard
                 </button>
             </div>
@@ -556,7 +550,7 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
     <div class="modal modal-danger">
         <div class="modal-header">
             <h3><i class="fas fa-exclamation-triangle"></i> Remove All WireGuard Peers</h3>
-            <button class="modal-close" onclick="closeRemoveAllPeersModal()">&times;</button>
+            <button class="modal-close" onclick="closeModal('remove-all-peers-modal')">&times;</button>
         </div>
         <div class="modal-body">
             <div class="warning-message">
@@ -577,9 +571,9 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
             </div>
             
             <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeRemoveAllPeersModal()">Cancel</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('remove-all-peers-modal')">Cancel</button>
                 <button type="button" class="btn btn-danger" id="confirm-remove-peers-btn" 
-                        onclick="confirmRemoveAllPeers()" disabled>
+                        onclick="removeAllWireguardPeers()" disabled>
                     <i class="fas fa-trash-alt"></i> Remove All Peers
                 </button>
             </div>
@@ -592,7 +586,7 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
     <div class="modal modal-danger">
         <div class="modal-header">
             <h3><i class="fas fa-exclamation-triangle"></i> Uninstall WireGuard Service</h3>
-            <button class="modal-close" onclick="closeUninstallWireGuardModal()">&times;</button>
+            <button class="modal-close" onclick="closeModal('uninstall-wireguard-modal')">&times;</button>
         </div>
         <div class="modal-body">
             <div class="warning-message">
@@ -619,9 +613,9 @@ sudo wg-quick strip /etc/wireguard/peer_name.conf<br><br>
             </div>
             
             <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeUninstallWireGuardModal()">Cancel</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('uninstall-wireguard-modal')">Cancel</button>
                 <button type="button" class="btn btn-danger" id="confirm-uninstall-wireguard-btn" 
-                        onclick="confirmUninstallWireGuard()" disabled>
+                        onclick="uninstallWireguard()" disabled>
                     <i class="fas fa-unlink"></i> Uninstall WireGuard
                 </button>
             </div>
