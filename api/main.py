@@ -1280,6 +1280,20 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # Setup Jinja2 templates
 templates = Jinja2Templates(directory=templates_dir)
 
+
+def static_version(relative_path: str) -> int:
+    """Cache-busting query param derived from the file's own mtime, so a
+    static asset edit is automatically a new URL - no more remembering to
+    bump a manual ?v= number (which is exactly what caused CDN/browser
+    caches to keep serving stale app.js/style.css after fixes this session)."""
+    try:
+        return int(os.path.getmtime(os.path.join(static_dir, relative_path)))
+    except OSError:
+        return 0
+
+
+templates.env.globals["static_version"] = static_version
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
