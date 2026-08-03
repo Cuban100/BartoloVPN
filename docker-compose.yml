@@ -55,7 +55,25 @@ services:
       - vpn-external
     depends_on:
       - wireguard
+      - openvpn-dns
     command: /scripts/init-openvpn-proper.sh
+
+  # CoreDNS for OpenVPN clients only. WireGuard already has its own
+  # CoreDNS built into the linuxserver/wireguard image, but that container
+  # sits on the plain Docker bridge network with no route to/from
+  # vpn-network - rather than restructure wireguard's networking (risky,
+  # this has broken things before), OpenVPN gets its own instance here on
+  # its own network, with a fixed IP other services can rely on.
+  openvpn-dns:
+    image: coredns/coredns:latest
+    container_name: bartolo-openvpn-dns
+    volumes:
+      - ./config/openvpn-dns/Corefile:/Corefile:ro
+    command: -conf /Corefile
+    restart: unless-stopped
+    networks:
+      vpn-network:
+        ipv4_address: 172.27.0.10
 
   # IKEv2 VPN Server (using strongSwan)
   ikev2:

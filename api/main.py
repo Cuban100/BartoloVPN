@@ -1658,17 +1658,26 @@ async def get_dns_queries(
                     ip_suffix = content.split('Address = 10.13.13.')[1].split('/')[0].strip()
                     ip_to_name[f"10.13.13.{ip_suffix}"] = fname[:-5]
 
+    # Same for OpenVPN clients (10.8.0.0/24), from the server's own status
+    # log rather than a config file - OpenVPN doesn't keep a per-client
+    # static IP mapping on disk the way the WireGuard peer configs do.
+    for c in await vpn_manager.get_openvpn_client_stats():
+        if c['virtual_ip']:
+            ip_to_name[c['virtual_ip']] = c['name']
+
+    def _protocol_for(ip: str) -> str:
+        if ip.startswith('10.13.13.'):
+            return 'WireGuard'
+        if ip.startswith('10.8.0.'):
+            return 'OpenVPN'
+        return 'Unknown'
+
     return {
         "queries": [
             {
                 "peer_ip": r.peer_ip,
                 "peer_name": ip_to_name.get(r.peer_ip, r.peer_ip),
-                # Always WireGuard for now - CoreDNS (the only source this
-                # table has) only ever sees WireGuard peers' queries, since
-                # OpenVPN clients are pushed external DNS directly and never
-                # route through it. Included explicitly rather than left
-                # implicit, so the column is honest if that changes later.
-                "protocol": "WireGuard",
+                "protocol": _protocol_for(r.peer_ip),
                 "domain": r.domain,
                 "timestamp": r.timestamp.isoformat()
             }
