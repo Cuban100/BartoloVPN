@@ -42,7 +42,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import psutil
 import aiohttp
@@ -1628,19 +1628,51 @@ async def disconnect_client(client_id: str, current_user: dict = Depends(get_cur
         return await vpn_manager.delete_openvpn_client(client_id)
     return await vpn_manager.delete_wireguard_peer(client_id)
 
+_WIREGUARD_IP_PREFIX = '10.13.13.'
+_OPENVPN_IP_PREFIX = '10.8.0.'
+DNS_QUERIES_PAGE_SIZE = 50
+DNS_QUERIES_MAX_PAGES = 10
+
+def _protocol_for_ip(ip: str) -> str:
+    if ip.startswith(_WIREGUARD_IP_PREFIX):
+        return 'WireGuard'
+    if ip.startswith(_OPENVPN_IP_PREFIX):
+        return 'OpenVPN'
+    return 'Unknown'
+
 @app.get("/api/dns/queries")
 async def get_dns_queries(
-    limit: int = 200,
+    page: int = 1,
     peer_ip: Optional[str] = None,
+    protocol: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Recent domain lookups per peer, most recent first (the dashboard's
-    Activity tab). Domain-level only - see dns_activity.py for how this is
-    collected."""
-    async with AsyncSessionLocal() as db:
-        stmt = select(DnsQueryLog).order_by(DnsQueryLog.timestamp.desc()).limit(min(limit, 1000))
+    """Recent domain lookups per peer, most recent first, paginated (the
+    dashboard's Activity tab). Domain-level only - see dns_activity.py for
+    how this is collected. Protocol isn't a stored column - it's derived
+    from which subnet peer_ip falls in - but SQL can still filter on it via
+    a prefix match, which is what lets pagination stay correct (LIMIT/OFFSET
+    at the DB level) instead of over-fetching and filtering in Python."""
+    page = max(page, 1)
+    if page > DNS_QUERIES_MAX_PAGES:
+        page = DNS_QUERIES_MAX_PAGES
+    offset = (page - 1) * DNS_QUERIES_PAGE_SIZE
+
+    def _apply_filters(stmt):
         if peer_ip:
             stmt = stmt.where(DnsQueryLog.peer_ip == peer_ip)
+        if protocol == 'WireGuard':
+            stmt = stmt.where(DnsQueryLog.peer_ip.like(f'{_WIREGUARD_IP_PREFIX}%'))
+        elif protocol == 'OpenVPN':
+            stmt = stmt.where(DnsQueryLog.peer_ip.like(f'{_OPENVPN_IP_PREFIX}%'))
+        return stmt
+
+    async with AsyncSessionLocal() as db:
+        count_result = await db.execute(_apply_filters(select(func.count()).select_from(DnsQueryLog)))
+        total_count = count_result.scalar() or 0
+
+        stmt = _apply_filters(select(DnsQueryLog)).order_by(DnsQueryLog.timestamp.desc())
+        stmt = stmt.offset(offset).limit(DNS_QUERIES_PAGE_SIZE)
         result = await db.execute(stmt)
         rows = result.scalars().all()
 
@@ -1665,24 +1697,23 @@ async def get_dns_queries(
         if c['virtual_ip']:
             ip_to_name[c['virtual_ip']] = c['name']
 
-    def _protocol_for(ip: str) -> str:
-        if ip.startswith('10.13.13.'):
-            return 'WireGuard'
-        if ip.startswith('10.8.0.'):
-            return 'OpenVPN'
-        return 'Unknown'
+    capped_total = min(total_count, DNS_QUERIES_MAX_PAGES * DNS_QUERIES_PAGE_SIZE)
+    total_pages = max(1, -(-capped_total // DNS_QUERIES_PAGE_SIZE))  # ceil div
 
     return {
         "queries": [
             {
                 "peer_ip": r.peer_ip,
                 "peer_name": ip_to_name.get(r.peer_ip, r.peer_ip),
-                "protocol": _protocol_for(r.peer_ip),
+                "protocol": _protocol_for_ip(r.peer_ip),
                 "domain": r.domain,
                 "timestamp": r.timestamp.isoformat()
             }
             for r in rows
-        ]
+        ],
+        "page": page,
+        "total_pages": total_pages,
+        "total_count": total_count,
     }
 
 @app.post("/auth/register", response_model=UserResponse)

@@ -8,8 +8,13 @@
     <div class="section-header">
         <h3>Recent DNS Activity</h3>
         <div class="section-actions">
-            <select id="activity-peer-filter" class="form-control" style="width: auto;" onchange="loadDnsActivity()">
+            <select id="activity-peer-filter" class="form-control" style="width: auto;" onchange="loadDnsActivity(1)">
                 <option value="">All peers/clients</option>
+            </select>
+            <select id="activity-protocol-filter" class="form-control" style="width: auto;" onchange="loadDnsActivity(1)">
+                <option value="">All protocols</option>
+                <option value="WireGuard">WireGuard</option>
+                <option value="OpenVPN">OpenVPN</option>
             </select>
             <button class="btn btn-secondary" onclick="loadDnsActivity()">
                 <i class="fas fa-sync"></i> Refresh
@@ -31,5 +36,15 @@
                 <tr><td colspan="4" class="text-center">Loading...</td></tr>
             </tbody>
         </table>
+    </div>
+
+    <div class="pagination-controls" style="display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px 0 4px;">
+        <button class="btn btn-sm btn-secondary" id="activity-prev-page" onclick="changeDnsActivityPage(-1)" disabled>
+            <i class="fas fa-chevron-left"></i> Previous
+        </button>
+        <span id="activity-page-indicator" class="text-muted">Page 1 of 1</span>
+        <button class="btn btn-sm btn-secondary" id="activity-next-page" onclick="changeDnsActivityPage(1)" disabled>
+            Next <i class="fas fa-chevron-right"></i>
+        </button>
     </div>
 </div>

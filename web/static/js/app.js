@@ -1317,18 +1317,28 @@ async function loadWireguardPeers() {
     }
 }
 
-// Load and render the DNS/domain Activity tab
-async function loadDnsActivity() {
-    console.log('Loading DNS activity');
+// Load and render the DNS/domain Activity tab. Server paginates at 50
+// rows/page, capped at 10 pages (500 rows) - see /api/dns/queries.
+let dnsActivityPage = 1;
+let dnsActivityTotalPages = 1;
+
+async function loadDnsActivity(page) {
+    if (typeof page === 'number') {
+        dnsActivityPage = page;
+    }
+    console.log('Loading DNS activity, page', dnsActivityPage);
     const tableBody = document.getElementById('dns-activity-table');
     const peerFilter = document.getElementById('activity-peer-filter');
+    const protocolFilter = document.getElementById('activity-protocol-filter');
     const selectedPeerIp = peerFilter ? peerFilter.value : '';
+    const selectedProtocol = protocolFilter ? protocolFilter.value : '';
 
     try {
-        const url = selectedPeerIp
-            ? `/api/dns/queries?peer_ip=${encodeURIComponent(selectedPeerIp)}`
-            : '/api/dns/queries';
-        const response = await apiFetch(url);
+        const params = new URLSearchParams({ page: dnsActivityPage });
+        if (selectedPeerIp) params.set('peer_ip', selectedPeerIp);
+        if (selectedProtocol) params.set('protocol', selectedProtocol);
+
+        const response = await apiFetch(`/api/dns/queries?${params.toString()}`);
         if (!response.ok) {
             if (tableBody) {
                 tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Failed to load activity</td></tr>';
@@ -1337,6 +1347,9 @@ async function loadDnsActivity() {
         }
         const data = await response.json();
         const queries = data.queries || [];
+        dnsActivityPage = data.page || 1;
+        dnsActivityTotalPages = data.total_pages || 1;
+        updateDnsActivityPagination();
 
         // Populate the peer filter dropdown with peers seen in the results,
         // without wiping out the user's current selection
@@ -1372,6 +1385,21 @@ async function loadDnsActivity() {
             tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading activity</td></tr>';
         }
     }
+}
+
+function updateDnsActivityPagination() {
+    const indicator = document.getElementById('activity-page-indicator');
+    const prevBtn = document.getElementById('activity-prev-page');
+    const nextBtn = document.getElementById('activity-next-page');
+    if (indicator) indicator.textContent = `Page ${dnsActivityPage} of ${dnsActivityTotalPages}`;
+    if (prevBtn) prevBtn.disabled = dnsActivityPage <= 1;
+    if (nextBtn) nextBtn.disabled = dnsActivityPage >= dnsActivityTotalPages;
+}
+
+function changeDnsActivityPage(delta) {
+    const target = dnsActivityPage + delta;
+    if (target < 1 || target > dnsActivityTotalPages) return;
+    loadDnsActivity(target);
 }
 
 // Populate the IKEv2 tab's PSK/username/password with the real values
