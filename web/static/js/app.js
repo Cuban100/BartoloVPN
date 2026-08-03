@@ -1745,7 +1745,8 @@ async function handleAddOpenVPNClient(event) {
         client_name: formData.get('openvpn-client-name'),
         user_id: 1, // TODO: Get current user ID from token
         protocol: formData.get('openvpn-client-protocol'),
-        cipher: formData.get('openvpn-client-cipher')
+        cipher: formData.get('openvpn-client-cipher'),
+        dns_region: formData.get('openvpn-client-region') || 'default'
     };
     
     try {
@@ -1785,15 +1786,19 @@ async function loadOpenVPNClients() {
                 if (clients.length === 0) {
                     tableBody.innerHTML = `
                         <tr>
-                            <td colspan="5" class="text-center">No clients configured</td>
+                            <td colspan="6" class="text-center">No clients configured</td>
                         </tr>
                     `;
                 } else {
-                    tableBody.innerHTML = clients.map(client => `
+                    tableBody.innerHTML = clients.map(client => {
+                        const region = client.dns_region || 'default';
+                        const regionLabel = region === 'default' ? '<span class="text-muted">Default</span>' : `<span class="status-badge status-active">${region.charAt(0).toUpperCase() + region.slice(1)}</span>`;
+                        return `
                         <tr>
                             <td>${client.name}</td>
                             <td><span class="status-badge status-${client.status === 'active' ? 'active' : 'inactive'}">${client.status}</span></td>
                             <td>UDP</td>
+                            <td>${regionLabel}</td>
                             <td>${new Date(client.created_at * 1000).toLocaleDateString()}</td>
                             <td>
                                 <button class="btn btn-sm btn-secondary" onclick="downloadOpenVPNConfig('${client.name}')">
@@ -1804,7 +1809,8 @@ async function loadOpenVPNClients() {
                                 </button>
                             </td>
                         </tr>
-                    `).join('');
+                    `;
+                    }).join('');
                 }
             }
         } else {
@@ -1813,7 +1819,7 @@ async function loadOpenVPNClients() {
             if (tableBody) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="text-center text-danger">Failed to load clients</td>
+                        <td colspan="6" class="text-center text-danger">Failed to load clients</td>
                     </tr>
                 `;
             }

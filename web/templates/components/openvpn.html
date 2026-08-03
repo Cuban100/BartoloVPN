@@ -53,6 +53,7 @@
                         <th>Name</th>
                         <th>Status</th>
                         <th>Protocol</th>
+                        <th>DNS Region</th>
                         <th>Created</th>
                         <th>Actions</th>
                     </tr>
@@ -558,6 +559,14 @@ ip route show
                         <option value="AES-256-CBC">AES-256-CBC</option>
                     </select>
                     <small class="form-help">Higher encryption provides better security</small>
+                </div>
+                <div class="form-group">
+                    <label for="openvpn-client-region">DNS Region</label>
+                    <select id="openvpn-client-region" name="openvpn-client-region">
+                        <option value="default">Default (no override)</option>
+                        <option value="sweden">Sweden</option>
+                    </select>
+                    <small class="form-help">Swaps this client's DNS resolver to servers in the selected region. This only changes DNS - it does not change this client's actual exit IP, so it won't bypass IP-based geo-blocking (Netflix, etc).</small>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeAddOpenVPNClientModal()">Cancel</button>

@@ -110,12 +110,24 @@ class WireGuardPeerUpdate(BaseModel):
     peer_name: str = Field(..., min_length=3, max_length=4)
     allowed_ips: str = "0.0.0.0/0"
 
+# DNS resolvers per region for OpenVPN clients (same servers as
+# scripts/geo-spoofing.sh's WireGuard-only feature, for parity). This only
+# swaps which DNS resolver a client uses via a per-client config override -
+# it does NOT change the client's actual egress IP, so it won't fool
+# IP-based geo-blocking (Netflix etc.) - real geolocation is set by which
+# country your traffic physically exits from, not your DNS resolver.
+OPENVPN_DNS_REGIONS = {
+    "default": [],
+    "sweden": ["130.242.4.8", "130.242.4.9", "8.8.8.8", "1.1.1.1"],
+}
+
 class OpenVPNClientCreate(BaseModel):
     """OpenVPN client creation model"""
     client_name: str = Field(..., min_length=3, max_length=50)
     user_id: int
     protocol: str = "udp"
     cipher: str = "AES-256-GCM"
+    dns_region: str = "default"
 
 class SystemStats(BaseModel):
     """System statistics model"""
@@ -784,8 +796,10 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
 
         return exit_code, output
 
-    async def create_openvpn_client(self, client_name: str, user_id: int, protocol: str = "udp", cipher: str = "AES-256-GCM") -> Dict[str, Any]:
+    async def create_openvpn_client(self, client_name: str, user_id: int, protocol: str = "udp", cipher: str = "AES-256-GCM", dns_region: str = "default") -> Dict[str, Any]:
         """Create a new OpenVPN client configuration"""
+        if dns_region not in OPENVPN_DNS_REGIONS:
+            raise HTTPException(status_code=400, detail=f"Unknown dns_region '{dns_region}' - supported: {', '.join(OPENVPN_DNS_REGIONS)}")
         if protocol != "udp":
             # The openvpn container's server config (scripts/init-openvpn-proper.sh)
             # only ever sets up a single UDP listener, and docker-compose.yml
@@ -865,6 +879,16 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
             # has to match exactly, unlike the data-channel cipher which
             # OpenVPN's NCP can negotiate. cipher/protocol params are still
             # accepted from the caller and validated, just not forced here.
+            dns_servers = OPENVPN_DNS_REGIONS[dns_region]
+            dns_override = ""
+            if dns_servers:
+                # pull-filter makes the client discard the server-pushed DNS
+                # option and use these instead - a real, standard OpenVPN
+                # per-client override (unlike the WireGuard script's dead
+                # config files, this one actually takes effect).
+                dns_lines = "\n".join(f'dhcp-option DNS {ip}' for ip in dns_servers)
+                dns_override = f'\n# geo-region: {dns_region}\npull-filter ignore "dhcp-option DNS"\n{dns_lines}\n'
+
             client_config = f"""client
 dev tun
 proto {protocol}
@@ -875,7 +899,7 @@ persist-key
 persist-tun
 verb 3
 key-direction 1
-
+{dns_override}
 <ca>
 {ca_cert}
 </ca>
@@ -906,6 +930,7 @@ key-direction 1
                 "config_path": client_config_path,
                 "protocol": settings.openvpn_protocol,
                 "port": settings.openvpn_port,
+                "dns_region": dns_region,
                 "created_at": datetime.utcnow().isoformat()
             }
             
@@ -2217,11 +2242,27 @@ async def list_openvpn_clients(current_user: dict = Depends(get_current_user)):
                     client_name = filename[:-5]  # Remove .ovpn extension
                     config_path = os.path.join(clients_dir, filename)
 
+                    # dns_region is stored as a "# geo-region: <name>" comment
+                    # written into the client's own .ovpn at creation time
+                    # (see create_openvpn_client) - no separate DB row needed.
+                    dns_region = "default"
+                    try:
+                        with open(config_path, 'r') as f:
+                            for line in f:
+                                if line.startswith('# geo-region:'):
+                                    dns_region = line.split(':', 1)[1].strip()
+                                    break
+                                if line.startswith('<ca>'):
+                                    break
+                    except OSError:
+                        pass
+
                     clients.append({
                         "name": client_name,
                         "config_file": filename,
                         "created_at": os.path.getctime(config_path),
-                        "status": "active" if client_name in connected_names else "inactive"
+                        "status": "active" if client_name in connected_names else "inactive",
+                        "dns_region": dns_region
                     })
 
         return {"clients": clients}
@@ -2238,7 +2279,7 @@ async def create_openvpn_client(
     if current_user["role"] != "admin" and client.user_id != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    return await vpn_manager.create_openvpn_client(client.client_name, client.user_id, client.protocol, client.cipher)
+    return await vpn_manager.create_openvpn_client(client.client_name, client.user_id, client.protocol, client.cipher, client.dns_region)
 
 @app.get("/vpn/openvpn/clients/{client_name}/config")
 async def download_openvpn_config(
