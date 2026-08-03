@@ -25,32 +25,22 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r api/requirements.txt
-        pip install pytest pytest-asyncio
-    
+        pip install -r api/requirements-dev.txt
+
     - name: Run tests
       run: |
         cd api
-        # Create tests directory if it doesn't exist
-        mkdir -p tests
-        # Create a basic test file if none exists
-        if [ ! -f tests/__init__.py ]; then
-          echo "# Tests will be added here" > tests/__init__.py
-        fi
-        if [ ! -f tests/test_main.py ]; then
-          echo "import pytest" > tests/test_main.py
-          echo "def test_placeholder():" >> tests/test_main.py
-          echo "    assert True" >> tests/test_main.py
-        fi
         python -m pytest tests/ -v
-    
-    - name: Lint code
+
+    - name: Lint (blocking - syntax errors / undefined names)
       run: |
-        pip install flake8 black
-        # Skip linting if no Python files to lint
-        if [ -d api ]; then
-          flake8 api/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
-          black --check api/ || true
-        fi
+        pip install flake8
+        flake8 api/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+    - name: Format check (advisory - codebase predates black adoption)
+      run: |
+        pip install black
+        black --check api/ || echo "::warning::Code is not black-formatted. Not blocking CI yet - run 'black api/' locally to clean this up incrementally."
 
   docker-build:
     runs-on: ubuntu-latest

@@ -9,6 +9,7 @@ import re
 import json
 import asyncio
 import subprocess
+from collections import defaultdict
 import qrcode
 import base64
 import logging
@@ -1297,6 +1298,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         "username": user.username,
         "email": user.email,
         "role": user.role,
+        "protocols": ["wireguard"],  # TODO: Get actual protocols from user data
         "is_active": user.is_active,
         "created_at": user.created_at,
         "last_login": user.last_login
@@ -1741,6 +1743,30 @@ async def get_dns_queries(
         "total_count": total_count,
     }
 
+# In-memory login rate limiting, keyed by client IP. Good enough for the
+# single-process deployment this runs as (API_WORKERS=1, no --reload workers
+# fan-out); would need a shared store (Redis) if that ever changes.
+_failed_login_attempts: Dict[str, List[datetime]] = defaultdict(list)
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5
+LOGIN_RATE_LIMIT_WINDOW_MINUTES = 15
+
+def _login_rate_limit_check(client_ip: str) -> None:
+    now = datetime.utcnow()
+    window_start = now - timedelta(minutes=LOGIN_RATE_LIMIT_WINDOW_MINUTES)
+    recent = [t for t in _failed_login_attempts.get(client_ip, []) if t > window_start]
+    _failed_login_attempts[client_ip] = recent
+    if len(recent) >= LOGIN_RATE_LIMIT_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed login attempts. Try again in {LOGIN_RATE_LIMIT_WINDOW_MINUTES} minutes.",
+        )
+
+def _login_rate_limit_record_failure(client_ip: str) -> None:
+    _failed_login_attempts[client_ip].append(datetime.utcnow())
+
+def _login_rate_limit_clear(client_ip: str) -> None:
+    _failed_login_attempts.pop(client_ip, None)
+
 @app.post("/auth/register", response_model=UserResponse)
 async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user"""
@@ -1783,19 +1809,25 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     )
 
 @app.post("/auth/login", response_model=Token)
-async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db)):
+async def login(user_credentials: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
     """User login"""
+    client_ip = request.client.host if request.client else "unknown"
+    _login_rate_limit_check(client_ip)
+
     # Get user from database
     result = await db.execute(select(User).where(User.username == user_credentials.username))
     user = result.scalar_one_or_none()
-    
+
     if not user or not verify_password(user_credentials.password, user.hashed_password):  # type: ignore[arg-type]
+        _login_rate_limit_record_failure(client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    _login_rate_limit_clear(client_ip)
+
     # Update last login
     user.last_login = datetime.utcnow()  # type: ignore[assignment]
     await db.commit()
@@ -1815,7 +1847,7 @@ async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db))
         value=access_token,
         max_age=settings.jwt_expire_minutes * 60,
         httponly=True,
-        secure=False,  # Set to True in production with HTTPS
+        secure=settings.cookie_secure,  # COOKIE_SECURE=true once served over HTTPS
         samesite="lax"
     )
     
@@ -1827,27 +1859,33 @@ async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db))
 @app.post('/api/auth/login')
 async def api_login(request: Request, db: AsyncSession = Depends(get_db)):
     logger.info("Login attempt started")
+    client_ip = request.client.host if request.client else "unknown"
+    _login_rate_limit_check(client_ip)
+
     data = await request.json()
     username = (data.get('username') or '').strip()
     password = data.get('password') or ''
     logger.info(f"Login attempt for username: {username}")
-    
+
     if not username or not password:
         logger.warning("Login failed: missing username or password")
         raise HTTPException(status_code=400, detail='Username and password required')
-    
+
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         logger.warning(f"Login failed: user not found - {username}")
+        _login_rate_limit_record_failure(client_ip)
         raise HTTPException(status_code=401, detail='Invalid credentials')
-    
+
     if not verify_password(password, getattr(user, "hashed_password")):
         logger.warning(f"Login failed: invalid password for user - {username}")
+        _login_rate_limit_record_failure(client_ip)
         raise HTTPException(status_code=401, detail='Invalid credentials')
-    
+
     logger.info(f"Login successful for user: {username}")
+    _login_rate_limit_clear(client_ip)
     user.last_login = datetime.utcnow()  # type: ignore[assignment]
     await db.commit()
     
@@ -1938,12 +1976,6 @@ async def logout():
 @app.get("/users/me", response_model=UserResponse)
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """Get current user information"""
-    return UserResponse(**current_user)
-
-@app.get("/api/auth/me", response_model=UserResponse)
-async def api_get_current_user(current_user: dict = Depends(get_current_user)):
-    """Get current user information - API auth endpoint"""
-    logger.info(f"Current user info requested: {current_user.get('username', 'unknown')}")
     return UserResponse(**current_user)
 
 @app.get("/users", response_model=List[UserResponse])
@@ -2053,9 +2085,13 @@ async def update_user(user_id: int, user_update: UserUpdate, current_user: dict 
         setattr(user, "hashed_password", get_password_hash(user_update.password))
     
     if user_update.role:
+        if current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can change roles")
         setattr(user, "role", user_update.role)
-    
+
     if user_update.status:
+        if current_user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can change account status")
         setattr(user, "is_active", user_update.status == "active")
     
     # TODO: Handle protocols update when user protocol support is implemented

@@ -895,10 +895,30 @@ function switchTab(tabName) {
     }
 }
 
+// ========== THEME TOGGLE ==========
+// base.html sets data-theme on <html> before first paint (from
+// localStorage) to avoid a flash; this just keeps the toggle icon in sync
+// and persists changes.
+function initThemeToggle() {
+    const icon = document.getElementById('theme-toggle-icon');
+    if (!icon) return;
+    const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    icon.className = theme === 'light' ? 'fas fa-sun' : 'fas fa-moon';
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    initThemeToggle();
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing elements...');
-    
+    initThemeToggle();
+
     // Initialize DOM elements
     loginScreen = document.getElementById('login-screen');
     dashboard = document.getElementById('dashboard');

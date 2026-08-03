@@ -9,6 +9,16 @@ from typing import List, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Literal defaults shipped in env.example - refusing to boot with these
+# catches the single most common self-hosting mistake (copy .env, forget
+# to change the secrets) before the service is ever exposed.
+_PLACEHOLDER_SECRETS = {
+    "jwt_secret_key": "your-super-secret-jwt-key-change-this-in-production",
+    "web_password": "your-secure-password-change-this",
+    "ikev2_psk": "your-ikev2-pre-shared-key-change-this",
+    "ikev2_password": "vpnpass-change-this",
+}
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
@@ -60,6 +70,12 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(...)
     jwt_algorithm: str = Field(...)
     jwt_expire_minutes: int = Field(...)
+
+    # Set to true once the app is only reachable over HTTPS (e.g. behind
+    # Cloudflare Tunnel or a TLS-terminating reverse proxy). Browsers refuse
+    # to send secure cookies over plain HTTP, so flipping this on for a
+    # LAN-only plain-HTTP deployment would silently break login.
+    cookie_secure: bool = Field(default=False)
     
     # Local Network Configuration
     local_ip: str = Field(...)
@@ -95,6 +111,28 @@ class Settings(BaseSettings):
         """Validate OpenVPN protocol"""
         if v not in ['udp', 'tcp']:
             raise ValueError("OpenVPN protocol must be 'udp' or 'tcp'")
+        return v
+
+    @field_validator('jwt_secret_key', 'web_password', 'ikev2_psk', 'ikev2_password')
+    @classmethod
+    def reject_placeholder_secrets(cls, v, info):
+        placeholder = _PLACEHOLDER_SECRETS.get(info.field_name)
+        if placeholder and v == placeholder:
+            raise ValueError(
+                f"{info.field_name} is still set to the example placeholder value from "
+                f"env.example. Set a real secret before starting the service."
+            )
+        return v
+
+    @field_validator('web_password', 'jwt_secret_key')
+    @classmethod
+    def warn_on_weak_secret(cls, v, info):
+        min_len = 12 if info.field_name == "web_password" else 32
+        if len(v) < min_len:
+            print(
+                f"WARNING: {info.field_name} is only {len(v)} characters - "
+                f"recommend at least {min_len} for a self-hosted VPN admin panel."
+            )
         return v
     
     @property

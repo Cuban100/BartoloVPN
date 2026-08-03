@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Cuban100/BartoloVPN/blob/main/CONTRIBUTING.md#security-issues
+    about: Please do not open public issues for security vulnerabilities — see CONTRIBUTING.md for the private disclosure process.

@@ -15,27 +15,7 @@
 | ![System monitoring dashboard](web/static/img/docs/monitoring-page.png) | ![DNS activity log](web/static/img/docs/activity-page.png) |
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Do## 🔒 Security Features
-
-- **JWT Authentication** - Secure API access
-- **Password Hashing** - bcrypt for user passwords
-- **SSL/TLS** - Encrypted communications
-- **Network Isolation** - Docker network segmentation
-- **Privileged Containers** - Minimal required permissions
-- **Cloudflare Tunnel** - Zero-trust remote access
-
-## 📚 Documentation
-
-### Setup Guides
-- **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
-- **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
-
-### Quick Reference
-- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
-- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
-- **[Changelog](CHANGELOG.md)** - Project version history
-
-## 🔧 Developmentimg.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-red.svg)](https://fastapi.tiangolo.com/)
 
@@ -63,6 +43,20 @@ A comprehensive VPN server solution supporting **WireGuard**, **OpenVPN**, and *
 - **Geo-spoofing** - Configure VPN to appear in different countries
 - **Cloudflare Tunnel** - Secure remote access without port forwarding
 - **Docker Networking** - Advanced container networking for scalability
+
+## ⚖️ How It Compares
+
+| | BartoloVPN | wg-easy | WireGuard-UI | Netmaker |
+|---|---|---|---|---|
+| Protocols | WireGuard, OpenVPN, IKEv2 | WireGuard only | WireGuard only | WireGuard (mesh) |
+| Web UI | ✅ Full dashboard | ✅ Minimal | ✅ Minimal | ✅ Full dashboard |
+| Multi-user accounts | ✅ | ❌ | ❌ | ✅ |
+| QR code client setup | ✅ | ✅ | ✅ | ❌ |
+| Geo-spoofing / IP rotation | ✅ | ❌ | ❌ | ❌ |
+| Load balancing (HAProxy) | ✅ | ❌ | ❌ | ❌ |
+| Zero-config mesh networking | ❌ | ❌ | ❌ | ✅ |
+
+BartoloVPN's niche is **protocol breadth** (run WireGuard, OpenVPN, and IKEv2 side by side from one dashboard) plus **geo-spoofing/IP rotation**, which the single-protocol WireGuard dashboards don't offer. If you need zero-config mesh networking across many nodes, Netmaker is the better fit; if you just want the simplest possible single-protocol WireGuard box, wg-easy is lighter weight.
 
 ## 🆕 What's New
 
@@ -197,6 +191,17 @@ JWT_SECRET_KEY=your-super-secret-jwt-key
 ./scripts/setup-cloudflare-tunnel.sh
 ```
 
+### Backup & Restore
+```bash
+# Back up VPN configs/keys and the database (needs sudo - the WireGuard
+# container creates config/wireguard/* as root)
+sudo ./scripts/backup.sh
+
+# Restore from a backup (stop the stack first: docker-compose down)
+sudo ./scripts/restore.sh backups/bartolovpn-backup-20260101-120000.tar.gz
+```
+Note: `.env` (JWT secret, admin password) is intentionally excluded from backups - store it separately.
+
 ## 📊 Monitoring
 
 ### System Status
@@ -218,25 +223,26 @@ docker-compose logs openvpn
 docker-compose logs ikev2
 ```
 
-## � Documentation
+## 🔒 Security Features
+
+- **JWT Authentication** - Secure API access
+- **Password Hashing** - bcrypt for user passwords
+- **SSL/TLS** - Encrypted communications (via Cloudflare Tunnel or your own reverse proxy)
+- **Network Isolation** - Docker network segmentation
+- **Privileged Containers** - Minimal required permissions
+- **Cloudflare Tunnel** - Zero-trust remote access
+
+## 📚 Documentation
 
 ### Setup Guides
 - **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
+- **[Local TLS Setup](TLS-SETUP.md)** - HTTPS via your own domain + Let's Encrypt, without Cloudflare
 - **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
 
 ### Quick Reference
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
 - **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
 - **[Changelog](CHANGELOG.md)** - Project version history
-
-## 🔧 Development
-
-- **JWT Authentication** - Secure API access
-- **Password Hashing** - bcrypt for user passwords
-- **SSL/TLS** - Encrypted communications
-- **Network Isolation** - Docker network segmentation
-- **Privileged Containers** - Minimal required permissions
-- **Cloudflare Tunnel** - Zero-trust remote access
 
 ## 🛠️ Development
 
