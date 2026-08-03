@@ -1,0 +1,30 @@
+name: Sync Docker Hub Description
+
+# Keeps the Docker Hub repository overview in sync with DOCKER_HUB_README.md.
+# Separate from docker-hub.yml (which builds/pushes images on version tags)
+# so this can run on doc changes or on demand without rebuilding anything.
+#
+# Requires the same DOCKERHUB_USERNAME / DOCKERHUB_TOKEN secrets as
+# docker-hub.yml.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'DOCKER_HUB_README.md'
+  workflow_dispatch: {}
+
+jobs:
+  sync-description:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync Docker Hub overview
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: cuban100/bartolovpn
+          short-description: "Self-hosted multi-protocol VPN dashboard (WireGuard, OpenVPN, IKEv2)"
+          readme-filepath: ./DOCKER_HUB_README.md
