@@ -459,7 +459,7 @@ BANDWIDTH_LIMIT_MB=1000
 # JWT Secret (auto-generated per install)
 JWT_SECRET_KEY={jwt_secret}
 JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=30
+JWT_EXPIRE_MINUTES=10080
 
 # Network Configuration
 LOCAL_IP={config['server_ip']}
