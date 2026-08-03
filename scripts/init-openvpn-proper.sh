@@ -16,10 +16,13 @@ mkdir -p "$OPENVPN_DIR/pki"
 # separate container on this same network, see docker-compose.yml's
 # openvpn-dns service) instead of a public resolver, so DNS Activity
 # tracking (dns_activity.py) can see OpenVPN clients' queries too -
-# they'd otherwise never touch anything the app can log.
+# they'd otherwise never touch anything the app can log. -D suppresses
+# ovpn_genconfig's own default DNS push (8.8.8.8/8.8.4.4) - without it,
+# -n only adds to that list rather than replacing it, and most clients
+# would keep resolving via Google first, bypassing our logging entirely.
 OPENVPN_DNS="${OPENVPN_DNS:-172.27.0.10}"
 echo "Generating OpenVPN configuration..."
-ovpn_genconfig -u udp://$SERVER_IP:1194 -s 10.8.0.0/24 -n "$OPENVPN_DNS"
+ovpn_genconfig -u udp://$SERVER_IP:1194 -s 10.8.0.0/24 -D -n "$OPENVPN_DNS"
 
 # Initialize PKI non-interactively - but only the first time. ovpn_initpki
 # calls "easyrsa init-pki", which unconditionally wipes and recreates the
