@@ -6,9 +6,16 @@
 
 A comprehensive multi-protocol VPN server with web management interface, supporting WireGuard, OpenVPN, and IKEv2 protocols.
 
-## 🚀 Quick Start
+## ⚠️ This image is one component of a multi-container stack
 
-### Using Docker Compose (Recommended)
+`cuban100/bartolovpn` is the **vpn-api** service only - the FastAPI backend and web
+dashboard. It is not a standalone all-in-one VPN server: it shares the WireGuard
+container's network namespace, reads/writes VPN config through a shared volume,
+and talks to sibling containers (WireGuard, OpenVPN, IKEv2, HAProxy, CoreDNS) that
+are defined in the project's `docker-compose.yml`. A bare `docker run` of this
+image on its own will not give you a working VPN server - use Docker Compose.
+
+## 🚀 Quick Start
 
 ```bash
 # Clone the repository
@@ -19,42 +26,22 @@ cd BartoloVPN
 cp env.example .env
 nano .env
 
-# Start all services
+# Pull/build every service and start the full stack
 docker-compose up -d
 
-# Access web interface
-open http://localhost:5000
-# Default credentials: Use WEB_USERNAME/WEB_PASSWORD from your .env file
+# Access the web interface (see docker-compose.yml for the ports HAProxy
+# publishes on your host)
 ```
 
-### Using Docker Run
-
-```bash
-# Pull the image
-docker pull cuban100/bartolovpn:latest
-
-# Run the container
-docker run -d \
-  --name bartolovpn \
-  --privileged \
-  -p 5000:5000 \
-  -p 51820:51820/udp \
-  -p 1194:1194/udp \
-  -p 500:500/udp \
-  -p 4500:4500/udp \
-  -v $(pwd)/config:/config \
-  -v $(pwd)/data:/data \
-  cuban100/bartolovpn:latest
-```
+Default credentials come from `WEB_USERNAME`/`WEB_PASSWORD` in your `.env` file.
 
 ## 🔧 Configuration
 
-### Environment Variables
+### Key environment variables (set in `.env`, loaded by docker-compose.yml)
 
 ```bash
 # Server Configuration
 SERVER_IP=your-server-ip
-DOMAIN=your-domain.com
 
 # Web Interface
 WEB_USERNAME=admin
@@ -67,21 +54,14 @@ IKEV2_PSK=your-ikev2-pre-shared-key
 
 # Security
 JWT_SECRET_KEY=your-super-secret-jwt-key
+JWT_EXPIRE_MINUTES=10080
 ```
 
-### Volumes
+### Volumes (as mounted by docker-compose.yml)
 
-- `/config` - VPN configuration files
-- `/data` - Database and logs
-- `/scripts` - Utility scripts
-
-### Ports
-
-- `5000` - Web interface and API
-- `51820/udp` - WireGuard VPN
-- `1194/udp` - OpenVPN
-- `500/udp` - IKEv2 (IKE)
-- `4500/udp` - IKEv2 (NAT-T)
+- `./config:/config` - shared VPN configuration (WireGuard/OpenVPN/IKEv2), used by vpn-api and the protocol containers
+- `./api:/app` - application source
+- `./web:/app/web` - Jinja2 templates and static assets for the dashboard
 
 ## 🌟 Features
 
@@ -91,78 +71,38 @@ JWT_SECRET_KEY=your-super-secret-jwt-key
 - **IKEv2** - Enterprise-grade VPN
 
 ### Management Interface
-- Real-time dashboard
-- User management
-- Configuration generation
-- System monitoring
-- Load balancing
+- Real-time dashboard (WireGuard + OpenVPN monitoring, live stats)
+- Per-protocol client/peer management, including WireGuard peer rename
+- DNS activity logging per peer/client, with pagination and protocol filtering
+- Load balancing via HAProxy
 
 ### Advanced Features
-- IP rotation
-- Geo-spoofing
-- Cloudflare Tunnel support
-- Multi-user authentication
-- JWT-based security
-
-## 📊 Monitoring
-
-### Health Check
-```bash
-curl http://localhost:5000/health
-```
-
-### Logs
-```bash
-# View all logs
-docker logs bartolovpn
-
-# Follow logs
-docker logs -f bartolovpn
-```
-
-## 🔒 Security
-
-- JWT authentication
-- Password hashing with bcrypt
-- Network isolation
-- Privileged container management
-- SSL/TLS encryption
+- Per-client DNS-region override for OpenVPN clients (changes DNS resolver only, not egress IP)
+- Multi-user authentication with JWT-based sessions
 
 ## 🛠️ Development
 
-### Building from Source
+### Building the vpn-api image from source
+
 ```bash
-# Clone repository
 git clone https://github.com/Cuban100/BartoloVPN.git
 cd BartoloVPN
 
-# Build image
-docker build -t cuban100/bartolovpn:latest .
+# Build just this image
+docker-compose build vpn-api
 
-# Run container
-docker run -d --name bartolovpn -p 5000:5000 cuban100/bartolovpn:latest
-```
-
-### Development Environment
-```bash
-# Start development stack
-docker-compose -f docker-compose.dev.yml up -d
-
-# Run tests
-docker-compose exec vpn-api python -m pytest
+# Or manually
+docker build -t cuban100/bartolovpn:latest ./api
 ```
 
 ## 📚 Documentation
 
 - [Full Documentation](https://github.com/Cuban100/BartoloVPN)
-- [API Reference](https://github.com/Cuban100/BartoloVPN/wiki/API)
-- [Troubleshooting](https://github.com/Cuban100/BartoloVPN/wiki/Troubleshooting)
 
 ## 🆘 Support
 
 - [GitHub Issues](https://github.com/Cuban100/BartoloVPN/issues)
 - [GitHub Discussions](https://github.com/Cuban100/BartoloVPN/discussions)
-- Email: admin@bartolovpn.com
 
 ## 📝 License
 
@@ -172,7 +112,6 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 
 **Erick Vladimir Salgado**
 - GitHub: [@Cuban100](https://github.com/Cuban100)
-- Email: pctechservices.llc@gmail.com
 
 ---
 
