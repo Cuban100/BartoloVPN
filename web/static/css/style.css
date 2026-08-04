@@ -484,6 +484,36 @@ body:has(.login-container) .footer,
     color: var(--text-primary);
 }
 
+.input-with-action {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+.input-with-action select {
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-icon {
+    flex-shrink: 0;
+    width: 2.75rem;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-icon:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
 /* Custom dropdown - stands in for a native <select> popup where the
    browser won't let CSS theme it (see settings.html's oracle-region-dropdown
    for why). Fully author-rendered, so it always matches the app theme. */

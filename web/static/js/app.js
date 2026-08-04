@@ -1865,6 +1865,13 @@ async function loadOracleSshKeys(selectedKeyName) {
     }
 }
 
+async function refreshOracleSshKeys() {
+    const select = document.getElementById('oracle-ssh-key');
+    const currentValue = select ? select.value : null;
+    await loadOracleSshKeys(currentValue);
+    showToast('SSH key list refreshed', 'success');
+}
+
 function toggleOracleSettings() {
     const checkbox = document.getElementById('oracle-enabled');
     const fields = document.getElementById('oracle-settings-fields');
@@ -2865,3 +2872,4 @@ window.closeModal = closeModal;
 window.saveSettings = saveSettings;
 window.resetSettings = resetSettings;
 window.toggleOracleSettings = toggleOracleSettings;
+window.refreshOracleSshKeys = refreshOracleSshKeys;

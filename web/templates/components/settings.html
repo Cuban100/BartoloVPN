@@ -181,10 +181,15 @@
                 </div>
                 <div class="form-group">
                     <label for="oracle-ssh-key">SSH Key (from .ssh/)</label>
-                    <select id="oracle-ssh-key">
-                        <option value="">No keys detected under .ssh/</option>
-                    </select>
-                    <small class="form-help">Detected automatically from the repo's .ssh/ folder - add a <strong>public</strong> key file ending in <code>.pub</code> (e.g. <code>.ssh/oracle.pub</code>) and reload this page to pick it up.</small>
+                    <div class="input-with-action">
+                        <select id="oracle-ssh-key">
+                            <option value="">No keys detected under .ssh/</option>
+                        </select>
+                        <button type="button" class="btn-icon" id="oracle-ssh-key-refresh" title="Re-scan .ssh/ for keys" onclick="refreshOracleSshKeys()">
+                            <i class="fas fa-rotate"></i>
+                        </button>
+                    </div>
+                    <small class="form-help">Detected automatically from the repo's .ssh/ folder - add a <strong>public</strong> key file ending in <code>.pub</code> (e.g. <code>.ssh/oracle.pub</code>), then click <i class="fas fa-rotate"></i> to pick it up.</small>
                 </div>
             </div>
         </div>
