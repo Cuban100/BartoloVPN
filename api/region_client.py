@@ -48,6 +48,9 @@ class RegionClient:
     async def list_peers(self) -> List[Dict[str, Any]]:
         return await self._request("GET", "/peers")
 
+    async def get_peer_stats(self) -> List[Dict[str, Any]]:
+        return await self._request("GET", "/peers/stats")
+
     async def create_peer(self, peer_name: str, allowed_ips: str) -> Dict[str, Any]:
         return await self._request("POST", "/peers", {"peer_name": peer_name, "allowed_ips": allowed_ips})
 

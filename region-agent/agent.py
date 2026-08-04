@@ -89,6 +89,16 @@ async def list_peers(request: Request, x_agent_key: str = Header(default="")):
     return await wg.list_peers()
 
 
+@app.get("/peers/stats")
+async def peer_stats(request: Request, x_agent_key: str = Header(default="")):
+    """Real per-peer handshake/traffic stats (name, ip, latest_handshake,
+    rx_bytes, tx_bytes) straight from `wg show wg0 dump` - lets the
+    central dashboard's Monitoring page show this region's live
+    connections instead of only its peer roster."""
+    require_agent_key(request, x_agent_key)
+    return await wg.get_wireguard_peer_stats()
+
+
 @app.post("/peers")
 async def create_peer(peer: PeerCreate, request: Request, x_agent_key: str = Header(default="")):
     require_agent_key(request, x_agent_key)

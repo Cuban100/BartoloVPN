@@ -1724,10 +1724,19 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
 async def get_active_connections(current_user: dict = Depends(get_current_user)):
     """Active Connections table on the Monitoring page. Was previously
     unimplemented (404), which the frontend silently swallowed into an
-    always-empty table."""
-    wg_peers = await vpn_manager.get_wireguard_peer_stats()
+    always-empty table. Each source (local WireGuard, local OpenVPN, each
+    remote region) is fetched independently so one broken source - e.g. the
+    docker-log-proxy sidecar OpenVPN stats depend on being unreachable -
+    degrades to just missing that source's rows instead of blanking the
+    entire table, including sources that were working fine."""
     now = datetime.now().timestamp()
     connections = []
+
+    try:
+        wg_peers = await vpn_manager.get_wireguard_peer_stats()
+    except Exception as e:
+        logger.warning(f"Could not fetch local WireGuard connection stats: {e}")
+        wg_peers = []
     for p in wg_peers:
         if not p['latest_handshake'] or (now - p['latest_handshake']) >= 180:
             continue  # only currently-connected peers, not every provisioned one
@@ -1742,7 +1751,11 @@ async def get_active_connections(current_user: dict = Depends(get_current_user))
             "status": "Connected",
         })
 
-    ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+    try:
+        ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+    except Exception as e:
+        logger.warning(f"Could not fetch local OpenVPN connection stats: {e}")
+        ovpn_clients = []
     for c in ovpn_clients:
         total_mb = (c['rx_bytes'] + c['tx_bytes']) / (1024 ** 2)
         connections.append({
@@ -1755,6 +1768,33 @@ async def get_active_connections(current_user: dict = Depends(get_current_user))
             "status": "Connected",
         })
 
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Region).where(Region.is_active == True, Region.is_local == False)
+        )
+        remote_regions = result.scalars().all()
+
+    for region in remote_regions:
+        try:
+            client = region_service.build_region_client(region)
+            remote_peers = await client.get_peer_stats()
+        except Exception as e:
+            logger.warning(f"Could not fetch connection stats for region {region.slug}: {e}")
+            continue
+        for p in remote_peers:
+            if not p['latest_handshake'] or (now - p['latest_handshake']) >= 180:
+                continue
+            total_mb = (p['rx_bytes'] + p['tx_bytes']) / (1024 ** 2)
+            connections.append({
+                "id": f"{region.slug}:{p['name']}",
+                "username": f"{p['name']} ({region.display_name})",
+                "protocol": "WireGuard",
+                "ip_address": p['ip'],
+                "connected_since": datetime.fromtimestamp(p['latest_handshake']).isoformat(),
+                "data_transfer": f"{total_mb:.1f} MB",
+                "status": "Connected",
+            })
+
     return connections
 
 @app.delete("/api/system/connections/{client_id}")
@@ -1764,7 +1804,16 @@ async def disconnect_client(client_id: str, current_user: dict = Depends(get_cur
     (WireGuard is stateless UDP, OpenVPN would just reconnect), so this
     removes the registration, matching what "disconnect" actually
     accomplishes. The connections table mixes both protocols, so figure out
-    which one this id actually belongs to rather than assuming WireGuard."""
+    which one this id actually belongs to rather than assuming WireGuard.
+    Remote-region connections are tagged "{region_slug}:{peer_name}" (local
+    peer/client names are capped at 4 chars and can't contain ':', so this
+    can't collide) - route those to that region's agent instead."""
+    if ":" in client_id:
+        region_slug, _, peer_name = client_id.partition(":")
+        region = await region_service.get_region_by_slug(region_slug)
+        if region is not None and region.is_active and not region.is_local:
+            client = region_service.build_region_client(region)
+            return await client.delete_peer(peer_name)
     ovpn_clients = await vpn_manager.get_openvpn_client_stats()
     if any(c['name'] == client_id for c in ovpn_clients):
         return await vpn_manager.delete_openvpn_client(client_id)
