@@ -1,10 +1,13 @@
 #!/bin/bash
 # BartoloVPN bootstrap installer.
 #
-# This is deliberately plain bash with no Python dependency - it exists
-# specifically to detect/install Python itself, then hand off to the real
-# setup script (vpn-setup.py). vpn-setup.py can't do this check on its own
-# since it needs Python to even start running.
+# Single entry point for both setup paths, so "git clone && cd BartoloVPN
+# && ./install.sh" is always the right first command regardless of which
+# one you're doing:
+#   1) Main dashboard - detects/installs Python itself (needed since
+#      vpn-setup.py can't do that check on its own), then hands off to it.
+#   2) A new region for an EXISTING dashboard - hands off directly to
+#      scripts/provision-region.sh (pure bash, no Python needed).
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,6 +15,22 @@ cd "$SCRIPT_DIR"
 
 echo "BartoloVPN Installer"
 echo "===================="
+echo
+echo "What are you setting up on this machine?"
+echo "  1) Main BartoloVPN dashboard (the full VPN server + web UI)"
+echo "  2) A new region for an EXISTING BartoloVPN dashboard (lightweight agent only)"
+read -rp "Choice [1/2]: " SETUP_MODE
+echo
+
+if [ "$SETUP_MODE" = "2" ]; then
+    REGION_SCRIPT="$SCRIPT_DIR/scripts/provision-region.sh"
+    if [ ! -f "$REGION_SCRIPT" ]; then
+        echo "ERROR: Could not find $REGION_SCRIPT - is this a full clone of the repo?"
+        exit 1
+    fi
+    echo "Handing off to scripts/provision-region.sh (needs root for package installs and firewall rules)..."
+    exec sudo "$REGION_SCRIPT" "$@"
+fi
 
 detect_distro() {
     if [ "$(uname -s)" = "Darwin" ]; then
