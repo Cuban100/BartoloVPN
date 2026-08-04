@@ -106,6 +106,70 @@ def test_pick_ubuntu_image_raises_clear_error_when_none_available(client, admin_
     asyncio.get_event_loop().run_until_complete(scenario())
 
 
+def test_ensure_network_skips_subnet_that_prohibits_public_ips(client, admin_headers, monkeypatch):
+    """Regression test for the actual root cause of a real production
+    failure: an existing manually-created 'BartoloVCN' had a subnet with
+    public IPs prohibited (a Console VCN Wizard default) - blindly
+    reusing subnets[0] launched a real instance that Oracle then auto-
+    terminated when VNIC creation failed ("Public IP addresses are
+    prohibited in this subnet"). Must skip a prohibited subnet and
+    create a working one instead of trusting whatever already exists."""
+    async def scenario():
+        vcn = SimpleNamespace(id="ocid1.vcn.oc1..existing")
+        prohibited_subnet = SimpleNamespace(
+            id="ocid1.subnet.oc1..prohibited",
+            cidr_block="10.0.0.0/24",
+            prohibit_public_ip_on_vnic=True,
+            lifecycle_state="AVAILABLE",
+        )
+        igw = SimpleNamespace(id="ocid1.internetgateway.oc1..existing")
+        route_table = SimpleNamespace(id="ocid1.routetable.oc1..default")
+        security_list = SimpleNamespace(id="ocid1.securitylist.oc1..default")
+        created_subnets = []
+
+        class FakeVirtualNetworkClient:
+            def __init__(self, config):
+                pass
+
+            def list_vcns(self, **kwargs):
+                return SimpleNamespace(data=[vcn])
+
+            def list_subnets(self, **kwargs):
+                return SimpleNamespace(data=[prohibited_subnet])
+
+            def list_internet_gateways(self, **kwargs):
+                return SimpleNamespace(data=[igw])
+
+            def list_route_tables(self, **kwargs):
+                return SimpleNamespace(data=[route_table])
+
+            def update_route_table(self, rt_id, details):
+                return SimpleNamespace(data=route_table)
+
+            def list_security_lists(self, **kwargs):
+                return SimpleNamespace(data=[security_list])
+
+            def update_security_list(self, sl_id, details):
+                return SimpleNamespace(data=security_list)
+
+            def create_subnet(self, details):
+                # Must not reuse the prohibited subnet's CIDR - proves the
+                # existing subnet's CIDR was actually excluded as a candidate.
+                assert details.cidr_block != prohibited_subnet.cidr_block
+                assert details.prohibit_public_ip_on_vnic is False
+                created_subnets.append(details.cidr_block)
+                return SimpleNamespace(data=SimpleNamespace(id="ocid1.subnet.oc1..new"))
+
+        monkeypatch.setattr(oracle_service.oci.core, "VirtualNetworkClient", FakeVirtualNetworkClient)
+        vcn_id, subnet_id = await oracle_service._ensure_network({}, "ocid1.tenancy.oc1..fake")
+
+        assert vcn_id == "ocid1.vcn.oc1..existing"
+        assert subnet_id == "ocid1.subnet.oc1..new"
+        assert len(created_subnets) == 1
+
+    asyncio.get_event_loop().run_until_complete(scenario())
+
+
 def test_fire_and_forget_task_survives_garbage_collection():
     """Regression test for a real production bug: asyncio.create_task()
     only keeps a *weak* reference to the returned Task internally - one

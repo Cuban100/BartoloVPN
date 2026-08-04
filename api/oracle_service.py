@@ -41,7 +41,10 @@ ORACLE_SHAPE = "VM.Standard.E2.1.Micro"
 VCN_DISPLAY_NAME = "BartoloVCN"
 SUBNET_DISPLAY_NAME = "BartoloVPN Public Subnet"
 VCN_CIDR = "10.0.0.0/16"
-SUBNET_CIDR = "10.0.0.0/24"
+# Tried in order if creating a new subnet - not just one fixed block,
+# since a manually-created "BartoloVCN" (same display name, reused by
+# _ensure_network) may already have a subnet occupying the first choice.
+SUBNET_CIDR_CANDIDATES = ["10.0.0.0/24", "10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
 
 GITHUB_REPO_URL = "https://github.com/Cuban100/BartoloVPN.git"
 
@@ -182,15 +185,31 @@ async def _ensure_network(config: dict, compartment_id: str) -> Tuple[str, str]:
     ingress on the default security list - the exact "second firewall"
     step that repeatedly tripped up manual Oracle setup this session (see
     [[oracle_free_tier_signup_troubleshooting]] memory) - so it never
-    needs a manual OCI Console step for auto-provisioned regions."""
+    needs a manual OCI Console step for auto-provisioned regions.
+
+    Confirmed in production: blindly reusing the first subnet found on an
+    existing 'BartoloVCN' launched an instance that Oracle then
+    auto-terminated when VNIC creation failed with "Public IP addresses
+    are prohibited in this subnet" - a manually-created VCN's subnet had
+    public IPs prohibited (a Console VCN Wizard default for some subnet
+    choices). Only reuses a subnet that's actually confirmed to allow
+    public IPs; otherwise creates a new one instead of trusting whatever
+    already exists."""
     vnet = oci.core.VirtualNetworkClient(config)
 
-    existing = (await _run_sync(vnet.list_vcns, compartment_id=compartment_id, display_name=VCN_DISPLAY_NAME)).data
-    if existing:
-        vcn = existing[0]
+    existing_vcns = (await _run_sync(vnet.list_vcns, compartment_id=compartment_id, display_name=VCN_DISPLAY_NAME)).data
+    if existing_vcns:
+        vcn = existing_vcns[0]
         subnets = (await _run_sync(vnet.list_subnets, compartment_id=compartment_id, vcn_id=vcn.id)).data
-        if subnets:
-            return vcn.id, subnets[0].id
+        usable_subnet = next(
+            (s for s in subnets if not s.prohibit_public_ip_on_vnic and s.lifecycle_state == "AVAILABLE"),
+            None,
+        )
+        if usable_subnet:
+            return vcn.id, usable_subnet.id
+        # Existing VCN, but no existing subnet actually allows public IPs -
+        # fall through to ensure/create one that does.
+        existing_cidrs = {s.cidr_block for s in subnets}
     else:
         vcn = (await _run_sync(
             vnet.create_vcn,
@@ -200,16 +219,21 @@ async def _ensure_network(config: dict, compartment_id: str) -> Tuple[str, str]:
                 cidr_block=VCN_CIDR,
             ),
         )).data
+        existing_cidrs = set()
 
-    igw = (await _run_sync(
-        vnet.create_internet_gateway,
-        oci.core.models.CreateInternetGatewayDetails(
-            compartment_id=compartment_id,
-            vcn_id=vcn.id,
-            display_name="BartoloVPN Internet Gateway",
-            is_enabled=True,
-        ),
-    )).data
+    existing_igws = (await _run_sync(vnet.list_internet_gateways, compartment_id=compartment_id, vcn_id=vcn.id)).data
+    if existing_igws:
+        igw = existing_igws[0]
+    else:
+        igw = (await _run_sync(
+            vnet.create_internet_gateway,
+            oci.core.models.CreateInternetGatewayDetails(
+                compartment_id=compartment_id,
+                vcn_id=vcn.id,
+                display_name="BartoloVPN Internet Gateway",
+                is_enabled=True,
+            ),
+        )).data
 
     route_tables = (await _run_sync(vnet.list_route_tables, compartment_id=compartment_id, vcn_id=vcn.id)).data
     default_rt = route_tables[0]
@@ -257,18 +281,37 @@ async def _ensure_network(config: dict, compartment_id: str) -> Tuple[str, str]:
         oci.core.models.UpdateSecurityListDetails(ingress_security_rules=ingress_rules),
     )
 
-    subnet = (await _run_sync(
-        vnet.create_subnet,
-        oci.core.models.CreateSubnetDetails(
-            compartment_id=compartment_id,
-            vcn_id=vcn.id,
-            display_name=SUBNET_DISPLAY_NAME,
-            cidr_block=SUBNET_CIDR,
-            route_table_id=default_rt.id,
-            security_list_ids=[default_sl.id],
-            prohibit_public_ip_on_vnic=False,
-        ),
-    )).data
+    candidate_cidrs = [c for c in SUBNET_CIDR_CANDIDATES if c not in existing_cidrs]
+    subnet = None
+    subnet_errors = []
+    for cidr in candidate_cidrs:
+        try:
+            subnet = (await _run_sync(
+                vnet.create_subnet,
+                oci.core.models.CreateSubnetDetails(
+                    compartment_id=compartment_id,
+                    vcn_id=vcn.id,
+                    display_name=SUBNET_DISPLAY_NAME,
+                    cidr_block=cidr,
+                    route_table_id=default_rt.id,
+                    security_list_ids=[default_sl.id],
+                    prohibit_public_ip_on_vnic=False,
+                ),
+            )).data
+            break
+        except oci.exceptions.ServiceError as e:
+            # A pre-existing manually-created VCN may already have a
+            # subnet occupying a candidate CIDR that list_subnets didn't
+            # report as a conflict up front - try the next one instead of
+            # giving up on the first collision.
+            subnet_errors.append(f"{cidr}: {_service_error_message(e)}")
+            continue
+
+    if subnet is None:
+        raise OracleProvisioningError(
+            f"Could not create a public subnet in VCN '{VCN_DISPLAY_NAME}' with any candidate CIDR: "
+            + "; ".join(subnet_errors)
+        )
     return vcn.id, subnet.id
 
 
