@@ -53,26 +53,25 @@ def test_service_error_message_includes_operation_name():
     assert "[" not in message_no_op
 
 
-def test_pick_ubuntu_image_filters_to_minimal_variant(client, admin_headers, monkeypatch):
-    """Pins to Ubuntu 24.04 Minimal specifically rather than trusting
-    whatever list_images happens to return newest - untested "pick the
-    latest" logic is exactly the kind of thing that silently regresses
-    when Oracle publishes a new image, and the operator's own manual,
-    confirmed-working launch used this exact variant."""
+def test_pick_ubuntu_image_picks_newest_matching_version(client, admin_headers, monkeypatch):
+    """Pins to Ubuntu 20.04 specifically (operating_system_version filter)
+    rather than trusting whatever list_images happens to return across
+    all versions - untested "pick the latest, any version" logic is
+    exactly the kind of thing that silently regresses when Oracle
+    publishes a new image. 20.04 was chosen because it's what the
+    operator's own manual, confirmed-working Console launch used for
+    this exact shape (24.04 Minimal was tried first and confirmed NOT
+    available for VM.Standard.E2.1.Micro in a real tenancy - see
+    UBUNTU_VERSION's docstring)."""
     async def scenario():
-        full_image = SimpleNamespace(
-            id="ocid1.image.oc1..full2404",
-            display_name="Canonical-Ubuntu-24.04-2025.07.23-0",
-            time_created="2025-07-23T00:00:00Z",
-        )
-        minimal_image_older = SimpleNamespace(
-            id="ocid1.image.oc1..minimalold",
-            display_name="Canonical-Ubuntu-24.04-Minimal-2025.06.01-0",
+        older_image = SimpleNamespace(
+            id="ocid1.image.oc1..older",
+            display_name="Canonical-Ubuntu-20.04-2025.06.01-0",
             time_created="2025-06-01T00:00:00Z",
         )
-        minimal_image_newer = SimpleNamespace(
-            id="ocid1.image.oc1..minimalnew",
-            display_name="Canonical-Ubuntu-24.04-Minimal-2025.07.23-0",
+        newer_image = SimpleNamespace(
+            id="ocid1.image.oc1..newer",
+            display_name="Canonical-Ubuntu-20.04-2025.07.23-0",
             time_created="2025-07-23T00:00:00Z",
         )
 
@@ -81,41 +80,28 @@ def test_pick_ubuntu_image_filters_to_minimal_variant(client, admin_headers, mon
                 pass
 
             def list_images(self, **kwargs):
-                assert kwargs["operating_system_version"] == "24.04"
-                return SimpleNamespace(data=[full_image, minimal_image_older, minimal_image_newer])
+                assert kwargs["operating_system_version"] == "20.04"
+                return SimpleNamespace(data=[older_image, newer_image])
 
         monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
         image_id = await oracle_service._pick_ubuntu_image({}, "ocid1.tenancy.oc1..fake")
-        # Picked the newest *Minimal* image, ignoring the non-Minimal one
-        # even though it's also a valid, newer-or-equal 24.04 image.
-        assert image_id == "ocid1.image.oc1..minimalnew"
+        assert image_id == "ocid1.image.oc1..newer"
 
     asyncio.get_event_loop().run_until_complete(scenario())
 
 
-def test_pick_ubuntu_image_raises_clear_error_when_no_minimal_variant_exists(client, admin_headers, monkeypatch):
+def test_pick_ubuntu_image_raises_clear_error_when_none_available(client, admin_headers, monkeypatch):
     async def scenario():
-        full_image_only = SimpleNamespace(
-            id="ocid1.image.oc1..fullonly",
-            display_name="Canonical-Ubuntu-24.04-2025.07.23-0",
-            time_created="2025-07-23T00:00:00Z",
-        )
-
         class FakeComputeClient:
             def __init__(self, config):
                 pass
 
             def list_images(self, **kwargs):
-                return SimpleNamespace(data=[full_image_only])
+                return SimpleNamespace(data=[])
 
         monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
-        # Regression: the error must show what actually IS available
-        # (real incident: 3 non-Minimal 24.04 images existed for the
-        # shape, but the error alone didn't say so, forcing a manual
-        # Console check to find out) instead of just saying "not found".
-        with pytest.raises(OracleProvisioningError, match="Minimal") as exc_info:
+        with pytest.raises(OracleProvisioningError, match="20.04"):
             await oracle_service._pick_ubuntu_image({}, "ocid1.tenancy.oc1..fake")
-        assert "Canonical-Ubuntu-24.04-2025.07.23-0" in str(exc_info.value)
 
     asyncio.get_event_loop().run_until_complete(scenario())
 

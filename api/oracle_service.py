@@ -287,14 +287,18 @@ async def _list_availability_domains(config: dict, compartment_id: str) -> list:
     return [ad.name for ad in ads]
 
 
-UBUNTU_VERSION = "24.04"
+UBUNTU_VERSION = "20.04"
 
 async def _pick_ubuntu_image(config: dict, compartment_id: str) -> str:
-    """Pins to Ubuntu 24.04 Minimal specifically, rather than whatever
-    happens to be the most-recently-published Canonical Ubuntu image for
-    the shape - "newest wins" was untested and could just as easily land
-    on a variant that behaves differently from the one actually verified
-    to work (the operator's own manual, working launch used 24.04)."""
+    """Pins to Ubuntu 20.04 specifically, rather than whatever happens to
+    be the most-recently-published Canonical Ubuntu image for the shape
+    - "newest wins" was untested and could just as easily land on a
+    variant that behaves differently from the one actually verified to
+    work. 24.04 Minimal was tried first and confirmed NOT available for
+    VM.Standard.E2.1.Micro in a real tenancy (Minimal images are mainly
+    published for newer flex/Ampere shapes) - 20.04 (non-Minimal) is
+    what the operator's own manual, confirmed-working Console launch
+    actually used for this exact shape."""
     compute = oci.core.ComputeClient(config)
     images = (await _run_sync(
         compute.list_images,
@@ -304,16 +308,12 @@ async def _pick_ubuntu_image(config: dict, compartment_id: str) -> str:
         shape=ORACLE_SHAPE,
         lifecycle_state="AVAILABLE",
     )).data
-    minimal_images = [img for img in images if "minimal" in (img.display_name or "").lower()]
-    if not minimal_images:
-        available_names = ", ".join(img.display_name for img in images) or "none"
+    if not images:
         raise OracleProvisioningError(
-            f"No available 'Canonical Ubuntu {UBUNTU_VERSION} Minimal' image found for shape "
-            f"{ORACLE_SHAPE} in this region - available Ubuntu {UBUNTU_VERSION} image(s) for "
-            f"this shape: {available_names}"
+            f"No available 'Canonical Ubuntu {UBUNTU_VERSION}' image found for shape {ORACLE_SHAPE} in this region"
         )
-    minimal_images.sort(key=lambda img: img.time_created, reverse=True)
-    return minimal_images[0].id
+    images.sort(key=lambda img: img.time_created, reverse=True)
+    return images[0].id
 
 
 async def terminate_instance(settings_row: SystemSettings, instance_id: str) -> None:
