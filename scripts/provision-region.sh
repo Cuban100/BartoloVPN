@@ -184,7 +184,12 @@ WIREGUARD_PORT="${WIREGUARD_PORT:-51820}"
 
 log_step "Installing Docker, the Compose plugin, ufw, and jq..."
 apt-get update -qq
-apt-get install -y -qq docker.io docker-compose-plugin ufw curl jq >/dev/null
+apt-get install -y -qq ufw curl jq >/dev/null
+# docker-compose-plugin isn't in every Ubuntu release's default apt repos
+# (confirmed missing on 20.04) - Docker's own install script adds the
+# correct repo for whatever release is running, instead of assuming one
+# specific package name/availability.
+curl -fsSL https://get.docker.com | sh >/dev/null
 systemctl enable --now docker >/dev/null 2>&1 || true
 
 AGENT_API_KEY=$(openssl rand -hex 32)

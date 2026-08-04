@@ -121,7 +121,16 @@ exec > /var/log/bartolovpn-provision.log 2>&1
 echo "BartoloVPN region provisioning started: $(date -u)"
 
 apt-get update -qq
-apt-get install -y -qq docker.io docker-compose-plugin ufw curl git
+apt-get install -y -qq ufw curl git
+# docker-compose-plugin isn't in every Ubuntu release's default apt repos
+# (confirmed missing on 20.04 in production - "E: Unable to locate
+# package docker-compose-plugin", which killed this whole script under
+# set -e before anything else ran, silently leaving the instance with no
+# agent and no explanation visible from the dashboard side). Docker's own
+# install script adds the correct repo for whatever release is running
+# and is what actually works across versions, instead of assuming one
+# specific package name/availability.
+curl -fsSL https://get.docker.com | sh
 systemctl enable --now docker
 
 git clone --depth 1 {GITHUB_REPO_URL} /opt/bartolovpn
