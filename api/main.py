@@ -2803,15 +2803,24 @@ class OracleRegionCreate(BaseModel):
 
 @app.post("/regions/oracle")
 async def create_oracle_region(region: OracleRegionCreate, current_user: dict = Depends(get_current_user)):
-    """Creates a real Oracle Compute instance via the OCI API using the
-    credentials stored in Settings, boots it into a working BartoloVPN
-    region with zero manual SSH, and returns as soon as the instance has
-    a public IP - the agent still needs several more minutes to finish
-    booting (Docker install, image build, TLS cert), tracked via
-    health_status="provisioning" until a background task
-    (oracle_service.finish_provisioning) confirms it's healthy or records
-    why it failed. See oracle_service.py's module docstring for the
-    architecture and its verification caveat."""
+    """Kicks off Oracle Compute provisioning and returns immediately - the
+    actual OCI API calls (network setup, image lookup, instance launch,
+    waiting for a public IP, then waiting for the agent to report
+    healthy) all run in a detached background task
+    (oracle_service.provision_oracle_region), not in this request.
+
+    That split is deliberate, not just nice-to-have: the network setup +
+    launch + public-IP wait alone can take long enough in practice that
+    a reverse-proxy/CDN in front of this app (Cloudflare, haproxy) returns
+    its own 502 before a synchronous version of this endpoint would have
+    responded, regardless of whether the underlying Oracle calls actually
+    succeeded - this is exactly what happened the first time this was
+    tried against a real Oracle account. The new region row starts as
+    health_status="provisioning" with no host/agent_url yet; the
+    frontend polls GET /regions until the background task fills those in
+    and flips it to "healthy" or "failed" with a real error message. See
+    oracle_service.py's module docstring for the architecture and its
+    verification caveat."""
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
@@ -2824,14 +2833,12 @@ async def create_oracle_region(region: OracleRegionCreate, current_user: dict = 
         if settings_row is None or not settings_row.oracle_enabled:
             raise HTTPException(status_code=400, detail="Oracle Cloud Services isn't enabled in Settings")
 
+    # Fail fast on missing credentials - cheap, local, no network call -
+    # rather than creating a row and immediately marking it failed.
     try:
-        instance_id, public_ip, agent_api_key = await oracle_service.launch_oracle_instance(
-            settings_row, region.display_name, region.wireguard_port
-        )
+        oracle_service._require_oracle_config(settings_row)
     except OracleProvisioningError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-    agent_url = f"https://{public_ip.replace('.', '-')}.sslip.io"
+        raise HTTPException(status_code=400, detail=str(e))
 
     async with AsyncSessionLocal() as session:
         new_region = Region(
@@ -2840,13 +2847,14 @@ async def create_oracle_region(region: OracleRegionCreate, current_user: dict = 
             country_code=region.country_code.upper(),
             city=region.city,
             is_local=False,
-            agent_url=agent_url,
-            agent_key_encrypted=region_service.encrypt_agent_key(agent_api_key),
-            wireguard_endpoint_host=public_ip,
+            agent_url=None,
+            agent_key_encrypted=None,
+            # NOT NULL column, but the real IP isn't known yet - "" is the
+            # placeholder until the background task fills in the real one.
+            wireguard_endpoint_host="",
             wireguard_endpoint_port=region.wireguard_port,
             is_active=False,
             health_status="provisioning",
-            oracle_instance_id=instance_id,
         )
         session.add(new_region)
         await session.commit()
@@ -2854,7 +2862,9 @@ async def create_oracle_region(region: OracleRegionCreate, current_user: dict = 
         region_id = new_region.id
         result = _region_out(new_region)
 
-    asyncio.create_task(oracle_service.finish_provisioning(region_id, region.slug, agent_url, agent_api_key))
+    asyncio.create_task(oracle_service.provision_oracle_region(
+        region_id, region.slug, region.display_name, region.wireguard_port, settings_row
+    ))
     return result
 
 @app.put("/regions/{region_id}")

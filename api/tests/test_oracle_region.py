@@ -4,11 +4,13 @@ here - see oracle_service.py's module docstring for why the actual OCI
 integration itself couldn't be exercised against a real account."""
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 import main
 import oracle_service
+import region_service
 from database import AsyncSessionLocal, Region, SystemSettings
 from oracle_service import OracleProvisioningError
 
@@ -26,6 +28,8 @@ def test_generate_cloud_init_embeds_agent_key_and_port():
 
 
 async def _enable_oracle_settings():
+    """Enabled but without full credentials - enough for the
+    oracle_enabled gate, not enough to pass _require_oracle_config."""
     async with AsyncSessionLocal() as session:
         s = await session.get(SystemSettings, 1)
         if s is None:
@@ -35,10 +39,35 @@ async def _enable_oracle_settings():
         await session.commit()
 
 
+async def _fully_configure_oracle_settings():
+    """Enabled with full (fake) credentials - passes _require_oracle_config
+    so tests can reach the actual provisioning call without hitting the
+    synchronous fast-fail check first."""
+    async with AsyncSessionLocal() as session:
+        s = await session.get(SystemSettings, 1)
+        if s is None:
+            s = SystemSettings(id=1)
+            session.add(s)
+        s.oracle_enabled = True
+        s.oracle_tenancy_ocid = "ocid1.tenancy.oc1..faketenancy"
+        s.oracle_user_ocid = "ocid1.user.oc1..fakeuser"
+        s.oracle_fingerprint = "aa:bb:cc:dd:ee:ff"
+        s.oracle_region = "us-ashburn-1"
+        s.oracle_api_key_encrypted = region_service.encrypt_secret("fake-private-key-content")
+        await session.commit()
+
+
 async def _disable_oracle_settings():
     async with AsyncSessionLocal() as session:
         s = await session.get(SystemSettings, 1)
+        if s is None:
+            return
         s.oracle_enabled = False
+        s.oracle_tenancy_ocid = None
+        s.oracle_user_ocid = None
+        s.oracle_fingerprint = None
+        s.oracle_region = None
+        s.oracle_api_key_encrypted = None
         await session.commit()
 
 
@@ -95,39 +124,36 @@ def test_create_oracle_region_duplicate_slug_conflicts(client, admin_headers, mo
     assert resp.status_code == 409
 
 
-def test_create_oracle_region_launch_failure_returns_502_and_no_row(client, admin_headers, monkeypatch):
-    asyncio.get_event_loop().run_until_complete(_enable_oracle_settings())
-
-    async def fake_launch_fails(settings_row, display_name, wireguard_port):
-        raise OracleProvisioningError("Oracle API error (LimitExceeded): out of host capacity")
-
-    monkeypatch.setattr(main.oracle_service, "launch_oracle_instance", fake_launch_fails)
+def test_create_oracle_region_missing_credentials_returns_400_and_no_row(client, admin_headers):
+    asyncio.get_event_loop().run_until_complete(_enable_oracle_settings())  # enabled, but no creds
 
     resp = client.post(
         "/regions/oracle",
-        json={"slug": "or-fail1", "display_name": "Will Fail", "country_code": "US"},
+        json={"slug": "or-missingcreds", "display_name": "Missing Creds", "country_code": "US"},
         headers=admin_headers,
     )
-    assert resp.status_code == 502
-    assert "out of host capacity" in resp.json()["detail"]
+    assert resp.status_code == 400
+    assert "Tenancy OCID" in resp.json()["detail"]
 
     list_resp = client.get("/regions", headers=admin_headers)
-    assert not any(r["slug"] == "or-fail1" for r in list_resp.json())
+    assert not any(r["slug"] == "or-missingcreds" for r in list_resp.json())
 
 
-def test_create_oracle_region_success_creates_provisioning_region(client, admin_headers, monkeypatch):
-    asyncio.get_event_loop().run_until_complete(_enable_oracle_settings())
+def test_create_oracle_region_returns_immediately_and_schedules_background_task(client, admin_headers, monkeypatch):
+    """The route itself must never call into any real OCI API - it should
+    return the instant it's created the placeholder row, scheduling the
+    actual provisioning as a background task. This is the fix for the
+    real production bug where the old synchronous version could run long
+    enough to trip a reverse-proxy's own timeout (502) regardless of
+    whether Oracle's API calls succeeded."""
+    asyncio.get_event_loop().run_until_complete(_fully_configure_oracle_settings())
 
-    async def fake_launch_ok(settings_row, display_name, wireguard_port):
-        return ("ocid1.instance.oc1..fake", "203.0.113.42", "cafebabe" * 8)
+    scheduled_calls = []
 
-    finish_calls = []
+    async def fake_provision(region_id, slug, display_name, wireguard_port, settings_row):
+        scheduled_calls.append((region_id, slug, display_name, wireguard_port))
 
-    async def fake_finish(region_id, slug, agent_url, agent_api_key):
-        finish_calls.append((region_id, slug, agent_url, agent_api_key))
-
-    monkeypatch.setattr(main.oracle_service, "launch_oracle_instance", fake_launch_ok)
-    monkeypatch.setattr(main.oracle_service, "finish_provisioning", fake_finish)
+    monkeypatch.setattr(main.oracle_service, "provision_oracle_region", fake_provision)
 
     resp = client.post(
         "/regions/oracle",
@@ -139,44 +165,85 @@ def test_create_oracle_region_success_creates_provisioning_region(client, admin_
     assert body["slug"] == "or-success1"
     assert body["health_status"] == "provisioning"
     assert body["is_active"] is False
-    assert body["wireguard_endpoint_host"] == "203.0.113.42"
-    assert body["agent_url"] == "https://203-0-113-42.sslip.io"
-    assert body["oracle_instance_id"] == "ocid1.instance.oc1..fake"
-    # The generated agent key must never appear in the response
-    assert "cafebabe" not in resp.text
+    # Nothing is known yet - the background task fills these in later
+    assert body["wireguard_endpoint_host"] == ""
+    assert body["agent_url"] is None
+    assert body["oracle_instance_id"] is None
+
+    # asyncio.create_task schedules but doesn't guarantee execution before
+    # the response returns - yield control once so it actually runs.
+    asyncio.get_event_loop().run_until_complete(asyncio.sleep(0))
+    assert len(scheduled_calls) == 1
+    assert scheduled_calls[0][1] == "or-success1"
+    assert scheduled_calls[0][2] == "Oracle Success"
 
 
-def test_finish_provisioning_marks_region_healthy_on_success(client, admin_headers, monkeypatch):
-    async def make_region_and_check():
+def test_provision_oracle_region_full_lifecycle_success(client, admin_headers, monkeypatch):
+    """Exercises the actual provision_oracle_region function end to end
+    (not the route) - network setup, image lookup, and instance launch
+    are faked since there's no real Oracle account to test against, but
+    the glue logic (setting agent_url/host/instance_id, then flipping to
+    healthy) runs for real."""
+    async def scenario():
         async with AsyncSessionLocal() as session:
             region = Region(
-                slug="or-finish-ok",
-                display_name="Finish OK",
+                slug="or-lifecycle-ok",
+                display_name="Lifecycle OK",
                 country_code="US",
                 is_local=False,
-                agent_url="https://198-51-100-1.sslip.io",
-                wireguard_endpoint_host="198.51.100.1",
+                wireguard_endpoint_host="",
                 is_active=False,
                 health_status="provisioning",
-                oracle_instance_id="ocid1.instance.oc1..finishok",
             )
             session.add(region)
             await session.commit()
             await session.refresh(region)
             region_id = region.id
 
+        await _fully_configure_oracle_settings()
+        async with AsyncSessionLocal() as session:
+            settings_row = await session.get(SystemSettings, 1)
+
+        async def fake_ensure_network(config, compartment_id):
+            return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..fake"
+
+        async def fake_pick_ad(config, compartment_id):
+            return "fake-AD-1"
+
+        async def fake_pick_image(config, compartment_id):
+            return "ocid1.image.oc1..fake"
+
+        async def fake_wait_for_public_ip(config, compartment_id, instance_id):
+            return "203.0.113.42"
+
         async def fake_wait_healthy(slug, agent_url, agent_key):
             return None
 
+        class FakeComputeClient:
+            def __init__(self, config):
+                pass
+
+            def launch_instance(self, details):
+                return SimpleNamespace(data=SimpleNamespace(id="ocid1.instance.oc1..lifecycle"))
+
+        monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
+        monkeypatch.setattr(oracle_service, "_pick_availability_domain", fake_pick_ad)
+        monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
+        monkeypatch.setattr(oracle_service, "_wait_for_public_ip", fake_wait_for_public_ip)
         monkeypatch.setattr(oracle_service, "_wait_for_agent_healthy", fake_wait_healthy)
-        await oracle_service.finish_provisioning(region_id, "or-finish-ok", "https://198-51-100-1.sslip.io", "fakekey")
+        monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
+
+        await oracle_service.provision_oracle_region(region_id, "or-lifecycle-ok", "Lifecycle OK", 51820, settings_row)
 
         async with AsyncSessionLocal() as session:
             updated = await session.get(Region, region_id)
             assert updated.health_status == "healthy"
             assert updated.is_active is True
+            assert updated.wireguard_endpoint_host == "203.0.113.42"
+            assert updated.agent_url == "https://203-0-113-42.sslip.io"
+            assert updated.oracle_instance_id == "ocid1.instance.oc1..lifecycle"
 
-    asyncio.get_event_loop().run_until_complete(make_region_and_check())
+    asyncio.get_event_loop().run_until_complete(scenario())
 
 
 def test_delete_region_terminates_oracle_instance(client, admin_headers, monkeypatch):
@@ -249,35 +316,110 @@ def test_delete_region_reports_termination_failure_but_still_deletes(client, adm
     assert not any(r["slug"] == "or-delete-fail-test" for r in get_resp.json())
 
 
-def test_finish_provisioning_marks_region_failed_on_timeout(client, admin_headers, monkeypatch):
-    async def make_region_and_check():
+def test_provision_oracle_region_marks_failed_when_agent_never_comes_up(client, admin_headers, monkeypatch):
+    async def scenario():
         async with AsyncSessionLocal() as session:
             region = Region(
-                slug="or-finish-fail",
-                display_name="Finish Fail",
+                slug="or-lifecycle-timeout",
+                display_name="Lifecycle Timeout",
                 country_code="US",
                 is_local=False,
-                agent_url="https://198-51-100-2.sslip.io",
-                wireguard_endpoint_host="198.51.100.2",
+                wireguard_endpoint_host="",
                 is_active=False,
                 health_status="provisioning",
-                oracle_instance_id="ocid1.instance.oc1..finishfail",
             )
             session.add(region)
             await session.commit()
             await session.refresh(region)
             region_id = region.id
 
+        await _fully_configure_oracle_settings()
+        async with AsyncSessionLocal() as session:
+            settings_row = await session.get(SystemSettings, 1)
+
+        async def fake_ensure_network(config, compartment_id):
+            return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..fake"
+
+        async def fake_pick_ad(config, compartment_id):
+            return "fake-AD-1"
+
+        async def fake_pick_image(config, compartment_id):
+            return "ocid1.image.oc1..fake"
+
+        async def fake_wait_for_public_ip(config, compartment_id, instance_id):
+            return "198.51.100.2"
+
         async def fake_wait_healthy_times_out(slug, agent_url, agent_key):
             raise OracleProvisioningError("Agent never came up within 15 minutes - last error: connection refused")
 
+        class FakeComputeClient:
+            def __init__(self, config):
+                pass
+
+            def launch_instance(self, details):
+                return SimpleNamespace(data=SimpleNamespace(id="ocid1.instance.oc1..timeout"))
+
+        monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
+        monkeypatch.setattr(oracle_service, "_pick_availability_domain", fake_pick_ad)
+        monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
+        monkeypatch.setattr(oracle_service, "_wait_for_public_ip", fake_wait_for_public_ip)
         monkeypatch.setattr(oracle_service, "_wait_for_agent_healthy", fake_wait_healthy_times_out)
-        await oracle_service.finish_provisioning(region_id, "or-finish-fail", "https://198-51-100-2.sslip.io", "fakekey")
+        monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
+
+        await oracle_service.provision_oracle_region(region_id, "or-lifecycle-timeout", "Lifecycle Timeout", 51820, settings_row)
 
         async with AsyncSessionLocal() as session:
             updated = await session.get(Region, region_id)
             assert updated.health_status == "failed"
             assert updated.is_active is False
             assert "never came up" in updated.last_health_error
+            # It still got this far before failing - host/agent_url/instance
+            # should be populated even though the overall result is a failure
+            assert updated.wireguard_endpoint_host == "198.51.100.2"
+            assert updated.oracle_instance_id == "ocid1.instance.oc1..timeout"
 
-    asyncio.get_event_loop().run_until_complete(make_region_and_check())
+    asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_provision_oracle_region_marks_failed_on_launch_error(client, admin_headers, monkeypatch):
+    """A failure during the earlier, previously-synchronous phase
+    (network/image/launch) - this used to surface as an HTTP 502 from
+    the route itself; now it's caught inside the background task and
+    recorded on the row instead."""
+    async def scenario():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-lifecycle-launchfail",
+                display_name="Lifecycle Launch Fail",
+                country_code="US",
+                is_local=False,
+                wireguard_endpoint_host="",
+                is_active=False,
+                health_status="provisioning",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+            region_id = region.id
+
+        await _fully_configure_oracle_settings()
+        async with AsyncSessionLocal() as session:
+            settings_row = await session.get(SystemSettings, 1)
+
+        async def fake_ensure_network_fails(config, compartment_id):
+            raise OracleProvisioningError("Oracle API error (LimitExceeded): out of host capacity")
+
+        monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network_fails)
+
+        await oracle_service.provision_oracle_region(region_id, "or-lifecycle-launchfail", "Lifecycle Launch Fail", 51820, settings_row)
+
+        async with AsyncSessionLocal() as session:
+            updated = await session.get(Region, region_id)
+            assert updated.health_status == "failed"
+            assert updated.is_active is False
+            assert "out of host capacity" in updated.last_health_error
+            # Never got far enough to have any of these
+            assert updated.wireguard_endpoint_host == ""
+            assert updated.oracle_instance_id is None
+
+    asyncio.get_event_loop().run_until_complete(scenario())

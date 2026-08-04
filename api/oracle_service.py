@@ -348,32 +348,47 @@ async def _wait_for_agent_healthy(slug: str, agent_url: str, agent_key: str) -> 
     )
 
 
-async def launch_oracle_instance(
-    settings_row: SystemSettings,
+def _b64(text: str) -> str:
+    import base64
+    return base64.b64encode(text.encode()).decode()
+
+
+async def provision_oracle_region(
+    region_id: int,
+    slug: str,
     display_name: str,
     wireguard_port: int,
-) -> Tuple[str, str, str]:
-    """The synchronous-feeling part of provisioning: validates config,
-    sets up networking, launches the Compute instance, and waits for its
-    public IP. Returns (instance_id, public_ip, agent_api_key). Raises
-    OracleProvisioningError on any failure - callers should treat that as
-    the complete, user-safe error message.
+    settings_row: SystemSettings,
+) -> None:
+    """The entire Oracle provisioning lifecycle - network setup, image
+    lookup, instance launch, waiting for a public IP, then waiting for
+    the agent to report healthy - run as a single detached background
+    task via asyncio.create_task from POST /regions/oracle.
 
-    Deliberately does NOT wait for the agent to become healthy - that can
-    take several minutes longer (image build, TLS cert) and belongs in a
-    background task so the operator gets the created region back
-    immediately with a "provisioning" status instead of a long-hanging
-    request."""
-    _require_oracle_config(settings_row)
-    config = build_oci_config(settings_row)
-    compartment_id = settings_row.oracle_tenancy_ocid  # root compartment
+    This used to be split into a synchronous "launch" phase (in the
+    request/response cycle) and a backgrounded "finish" phase (just the
+    health wait) - moved fully into the background after a real
+    production failure: the network setup + launch + public-IP wait
+    alone can take long enough that a reverse-proxy/CDN in front of the
+    app (Cloudflare, haproxy) returns its own 502 before this function
+    would have returned, regardless of whether the underlying Oracle
+    calls actually succeeded. The route now returns immediately after
+    creating a "provisioning" Region row; this function updates that row
+    in place as it progresses, and the frontend polls for the result."""
+    async def _set_fields(**fields) -> None:
+        async with AsyncSessionLocal() as session:
+            region = await session.get(Region, region_id)
+            if region is None:
+                return
+            for key, value in fields.items():
+                setattr(region, key, value)
+            region.last_health_check = datetime.utcnow()
+            await session.commit()
 
     try:
-        oci.config.validate_config(config)
-    except oci.exceptions.InvalidConfig as e:
-        raise OracleProvisioningError(f"Stored Oracle credentials are invalid: {e}")
+        config = build_oci_config(settings_row)
+        compartment_id = settings_row.oracle_tenancy_ocid  # root compartment
 
-    try:
         vcn_id, subnet_id = await _ensure_network(config, compartment_id)
         availability_domain = await _pick_availability_domain(config, compartment_id)
         image_id = await _pick_ubuntu_image(config, compartment_id)
@@ -406,38 +421,26 @@ async def launch_oracle_instance(
         instance_id = launch_response.data.id
 
         public_ip = await _wait_for_public_ip(config, compartment_id, instance_id)
-        return instance_id, public_ip, agent_api_key
-    except oci.exceptions.ServiceError as e:
-        raise OracleProvisioningError(_service_error_message(e))
+        agent_url = f"https://{public_ip.replace('.', '-')}.sslip.io"
 
+        await _set_fields(
+            wireguard_endpoint_host=public_ip,
+            agent_url=agent_url,
+            agent_key_encrypted=region_service.encrypt_agent_key(agent_api_key),
+            oracle_instance_id=instance_id,
+        )
 
-def _b64(text: str) -> str:
-    import base64
-    return base64.b64encode(text.encode()).decode()
-
-
-async def finish_provisioning(region_id: int, slug: str, agent_url: str, agent_api_key: str) -> None:
-    """Background tail of provisioning: waits for the agent to report
-    healthy and flips the Region row to active, or records the failure.
-    Runs detached from the original request via asyncio.create_task."""
-    async def _set_status(health_status: str, is_active: bool, error: Optional[str] = None):
-        async with AsyncSessionLocal() as session:
-            region = await session.get(Region, region_id)
-            if region is None:
-                return
-            region.health_status = health_status
-            region.is_active = is_active
-            region.last_health_check = datetime.utcnow()
-            region.last_health_error = error
-            await session.commit()
-
-    try:
         await _wait_for_agent_healthy(slug, agent_url, agent_api_key)
-        await _set_status("healthy", True)
+        await _set_fields(health_status="healthy", is_active=True, last_health_error=None)
         logger.info(f"Oracle region '{slug}' finished provisioning and is now active")
+
+    except oci.exceptions.ServiceError as e:
+        message = _service_error_message(e)
+        await _set_fields(health_status="failed", last_health_error=message)
+        logger.warning(f"Oracle region '{slug}' failed to provision: {message}")
     except OracleProvisioningError as e:
-        await _set_status("failed", False, str(e))
-        logger.warning(f"Oracle region '{slug}' failed to come up: {e}")
+        await _set_fields(health_status="failed", last_health_error=str(e))
+        logger.warning(f"Oracle region '{slug}' failed to provision: {e}")
     except Exception as e:
-        await _set_status("failed", False, f"Unexpected error: {e}")
+        await _set_fields(health_status="failed", last_health_error=f"Unexpected error: {e}")
         logger.exception(f"Oracle region '{slug}' provisioning hit an unexpected error")
