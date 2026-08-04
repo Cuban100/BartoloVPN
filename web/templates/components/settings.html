@@ -112,7 +112,57 @@
                 </div>
                 <div class="form-group">
                     <label for="oracle-region">Home Region</label>
-                    <input type="text" id="oracle-region" placeholder="e.g. us-ashburn-1">
+                    <select id="oracle-region">
+                        <option value="">Select a region...</option>
+                        <optgroup label="US / Canada">
+                            <option value="us-ashburn-1">US East (Ashburn)</option>
+                            <option value="us-phoenix-1">US West (Phoenix)</option>
+                            <option value="us-sanjose-1">US West (San Jose)</option>
+                            <option value="ca-toronto-1">Canada Southeast (Toronto)</option>
+                            <option value="ca-montreal-1">Canada Southeast (Montreal)</option>
+                        </optgroup>
+                        <optgroup label="Latin America">
+                            <option value="sa-saopaulo-1">Brazil East (Sao Paulo)</option>
+                            <option value="sa-vinhedo-1">Brazil East (Vinhedo)</option>
+                            <option value="sa-santiago-1">Chile (Santiago)</option>
+                            <option value="sa-valparaiso-1">Chile (Valparaiso)</option>
+                            <option value="sa-bogota-1">Colombia (Bogota)</option>
+                            <option value="mx-queretaro-1">Mexico (Queretaro)</option>
+                            <option value="mx-monterrey-1">Mexico (Monterrey)</option>
+                        </optgroup>
+                        <optgroup label="Europe">
+                            <option value="eu-frankfurt-1">Germany (Frankfurt)</option>
+                            <option value="eu-amsterdam-1">Netherlands (Amsterdam)</option>
+                            <option value="uk-london-1">UK (London)</option>
+                            <option value="uk-cardiff-1">UK (Cardiff)</option>
+                            <option value="eu-zurich-1">Switzerland (Zurich)</option>
+                            <option value="eu-madrid-1">Spain (Madrid)</option>
+                            <option value="eu-marseille-1">France (Marseille)</option>
+                            <option value="eu-paris-1">France (Paris)</option>
+                            <option value="eu-milan-1">Italy (Milan)</option>
+                            <option value="eu-stockholm-1">Sweden (Stockholm)</option>
+                        </optgroup>
+                        <optgroup label="Middle East / Africa">
+                            <option value="me-jeddah-1">Saudi Arabia (Jeddah)</option>
+                            <option value="me-dubai-1">UAE (Dubai)</option>
+                            <option value="me-abudhabi-1">UAE (Abu Dhabi)</option>
+                            <option value="il-jerusalem-1">Israel (Jerusalem)</option>
+                            <option value="af-johannesburg-1">South Africa (Johannesburg)</option>
+                        </optgroup>
+                        <optgroup label="Asia Pacific">
+                            <option value="ap-mumbai-1">India (Mumbai)</option>
+                            <option value="ap-hyderabad-1">India (Hyderabad)</option>
+                            <option value="ap-singapore-1">Singapore</option>
+                            <option value="ap-tokyo-1">Japan (Tokyo)</option>
+                            <option value="ap-osaka-1">Japan (Osaka)</option>
+                            <option value="ap-seoul-1">South Korea (Seoul)</option>
+                            <option value="ap-chuncheon-1">South Korea (Chuncheon)</option>
+                            <option value="ap-sydney-1">Australia (Sydney)</option>
+                            <option value="ap-melbourne-1">Australia (Melbourne)</option>
+                            <option value="ap-jakarta-1">Indonesia (Jakarta)</option>
+                        </optgroup>
+                    </select>
+                    <small class="form-help">This is your Oracle tenancy's home region (set once at signup) - check the OCI Console if unsure.</small>
                 </div>
                 <div class="form-group">
                     <label for="oracle-ssh-key">SSH Key (from .ssh/)</label>
