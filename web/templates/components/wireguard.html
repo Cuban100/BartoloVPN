@@ -116,8 +116,22 @@
                     <small class="form-help">IP ranges this peer can access (default: all traffic)</small>
                 </div>
                 <div class="form-group">
-                    <label for="peer-region">Region</label>
-                    <select id="peer-region" name="peer-region"></select>
+                    <label for="peer-region-trigger">Region</label>
+                    <!-- Custom-rendered dropdown, not a native <select> - see
+                         the Oracle Home Region field in settings.html for
+                         why (Linux Chrome can't CSS-theme a native select's
+                         open popup at all). Options are populated at
+                         runtime by loadRegions() in app.js, not static
+                         HTML - it also calls refreshCustomSelectPanel()
+                         after repopulating the hidden select below. -->
+                    <div class="custom-dropdown" id="peer-region-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="peer-region-trigger">
+                            <span id="peer-region-trigger-label">Select a region...</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="peer-region-panel" hidden></div>
+                    </div>
+                    <select id="peer-region" name="peer-region" style="display: none;"></select>
                     <small class="form-help">Which VPN server location this peer connects through (its real exit IP/country) - manage locations in the Regions tab</small>
                 </div>
                 <div class="form-actions">

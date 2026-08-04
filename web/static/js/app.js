@@ -926,6 +926,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupCustomSelect('oracle-region');
     setupCustomSelect('region-country-code');
     setupCustomSelect('oracle-add-region-country-code');
+    setupCustomSelect('peer-region');
     initRegionCountryAutofill();
 
     // Initialize DOM elements
@@ -1155,6 +1156,8 @@ async function loadRegions() {
         if (currentValue && regions.some(r => r.slug === currentValue)) {
             select.value = currentValue;
         }
+        refreshCustomSelectPanel('peer-region');
+        syncCustomSelectLabel('peer-region');
     } catch (error) {
         console.error('Error loading regions:', error);
     }
@@ -1909,15 +1912,32 @@ function setCheckedIfPresent(elementId, value) {
 // calling this again would stack duplicate listeners); call
 // syncCustomSelectLabel() after anything sets the select's value
 // programmatically (e.g. loadSettings) to keep the visible label in sync.
-function setupCustomSelect(selectId) {
+// Rebuilds a custom dropdown's option panel from its backing <select>'s
+// CURRENT children - separate from setupCustomSelect() so a select whose
+// options are populated at runtime (e.g. peer-region, filled in by
+// loadRegions() with live data, not known up front) can be refreshed
+// every time that data changes without re-wiring duplicate click/
+// document-level listeners each time.
+function refreshCustomSelectPanel(selectId) {
     const select = document.getElementById(selectId);
-    const dropdown = document.getElementById(`${selectId}-dropdown`);
-    const trigger = document.getElementById(`${selectId}-trigger`);
     const panel = document.getElementById(`${selectId}-panel`);
-    const label = document.getElementById(`${selectId}-trigger-label`);
-    if (!select || !dropdown || !trigger || !panel || !label) return;
+    if (!select || !panel) return;
 
-    const placeholder = label.textContent;
+    function buildCustomOption(opt) {
+        const item = document.createElement('div');
+        item.className = 'custom-dropdown-option';
+        item.textContent = opt.textContent;
+        item.dataset.value = opt.value;
+        item.addEventListener('click', () => {
+            select.value = opt.value;
+            select.dispatchEvent(new Event('change'));
+            syncCustomSelectLabel(selectId);
+            const trigger = document.getElementById(`${selectId}-trigger`);
+            panel.hidden = true;
+            if (trigger) trigger.classList.remove('open');
+        });
+        return item;
+    }
 
     panel.innerHTML = '';
     Array.from(select.children).forEach(child => {
@@ -1931,20 +1951,18 @@ function setupCustomSelect(selectId) {
             panel.appendChild(buildCustomOption(child));
         }
     });
+}
 
-    function buildCustomOption(opt) {
-        const item = document.createElement('div');
-        item.className = 'custom-dropdown-option';
-        item.textContent = opt.textContent;
-        item.dataset.value = opt.value;
-        item.addEventListener('click', () => {
-            select.value = opt.value;
-            select.dispatchEvent(new Event('change'));
-            syncCustomSelectLabel(selectId);
-            closePanel();
-        });
-        return item;
-    }
+function setupCustomSelect(selectId) {
+    const select = document.getElementById(selectId);
+    const dropdown = document.getElementById(`${selectId}-dropdown`);
+    const trigger = document.getElementById(`${selectId}-trigger`);
+    const panel = document.getElementById(`${selectId}-panel`);
+    const label = document.getElementById(`${selectId}-trigger-label`);
+    if (!select || !dropdown || !trigger || !panel || !label) return;
+
+    const placeholder = label.textContent;
+    refreshCustomSelectPanel(selectId);
 
     function openPanel() {
         panel.hidden = false;
