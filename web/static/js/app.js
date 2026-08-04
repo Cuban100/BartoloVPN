@@ -1897,11 +1897,20 @@ async function importOracleApiKey() {
     if (btn) btn.disabled = true;
     try {
         const response = await apiFetch('/settings/oracle-api-key/import', { method: 'POST' });
+        const data = await response.json();
         if (response.ok) {
-            showToast('Oracle API key imported', 'success');
-            await loadSettings();
+            // Only touch the fields this action actually changed server-side
+            // (fingerprint + key-stored status) - a full loadSettings() here
+            // would overwrite any other fields the operator has typed but
+            // not saved yet (Tenancy OCID, Region, etc.) with whatever's
+            // still in the DB, silently discarding unsaved input.
+            setValueIfPresent('oracle-fingerprint', data.oracle_fingerprint);
+            const apiKeyStatus = document.getElementById('oracle-api-key-status');
+            if (apiKeyStatus) {
+                apiKeyStatus.textContent = 'A key is already stored - leave blank to keep it, or paste a new one to replace it.';
+            }
+            showToast('Oracle API key imported - fingerprint filled in. Click Save Settings to keep everything.', 'success');
         } else {
-            const data = await response.json();
             showToast(data.detail || 'Failed to import key', 'error');
         }
     } catch (error) {
