@@ -408,6 +408,17 @@ async function loadSystemResources() {
     }
 }
 
+function formatSpeed(mbps) {
+    // Auto-scales the unit instead of always showing MB/s, where anything
+    // under 0.05 MB/s rounds to a misleading "0.0 MB/s" even though real
+    // (if light) traffic is flowing - a personal VPN idles well below 1
+    // MB/s most of the time.
+    if (mbps < 1) {
+        return `${(mbps * 1024).toFixed(0)} KB/s`;
+    }
+    return `${mbps.toFixed(1)} MB/s`;
+}
+
 function updateSystemResources(data) {
     // Update CPU. cpu-progress/cpu-percent are the Overview page's bar+text;
     // cpu-usage/monitoring-cpu-progress are the Monitoring page's own
@@ -475,7 +486,7 @@ function updateSystemResources(data) {
     const networkSentEl = document.getElementById('network-sent');
     const networkReceivedEl = document.getElementById('network-received');
     
-    if (networkSpeedEl) networkSpeedEl.textContent = `${networkSpeed.toFixed(1)} MB/s`;
+    if (networkSpeedEl) networkSpeedEl.textContent = formatSpeed(networkSpeed);
     if (networkSentEl) networkSentEl.textContent = `${networkSent.toFixed(1)} MB`;
     if (networkReceivedEl) networkReceivedEl.textContent = `${networkReceived.toFixed(1)} MB`;
     
@@ -492,7 +503,7 @@ function updateVPNMetrics(vpnData) {
     const wgTransferEl = document.getElementById('wg-transfer');
     
     if (wgConnectionsEl) wgConnectionsEl.textContent = wgData.connections || 0;
-    if (wgBandwidthEl) wgBandwidthEl.textContent = `${(wgData.bandwidth || 0).toFixed(1)} MB/s`;
+    if (wgBandwidthEl) wgBandwidthEl.textContent = formatSpeed(wgData.bandwidth || 0);
     if (wgLatencyEl) wgLatencyEl.textContent = `${wgData.latency || 0}ms`;
     if (wgTransferEl) wgTransferEl.textContent = `${(wgData.transfer || 0).toFixed(1)} MB`;
     updateProtocolStatus('wg', wgData.active || false);
@@ -505,7 +516,7 @@ function updateVPNMetrics(vpnData) {
     const ovpnTransferEl = document.getElementById('ovpn-transfer');
     
     if (ovpnConnectionsEl) ovpnConnectionsEl.textContent = ovpnData.connections || 0;
-    if (ovpnBandwidthEl) ovpnBandwidthEl.textContent = `${(ovpnData.bandwidth || 0).toFixed(1)} MB/s`;
+    if (ovpnBandwidthEl) ovpnBandwidthEl.textContent = formatSpeed(ovpnData.bandwidth || 0);
     if (ovpnLatencyEl) ovpnLatencyEl.textContent = `${ovpnData.latency || 0}ms`;
     if (ovpnTransferEl) ovpnTransferEl.textContent = `${(ovpnData.transfer || 0).toFixed(1)} MB`;
     updateProtocolStatus('ovpn', ovpnData.active || false);
@@ -520,7 +531,7 @@ function updateVPNMetrics(vpnData) {
 
     if (ikev2ConnectionsEl) ikev2ConnectionsEl.textContent = ikev2Data.connections || 0;
     if (ikev2PageConnectionsEl) ikev2PageConnectionsEl.textContent = ikev2Data.connections || 0;
-    if (ikev2BandwidthEl) ikev2BandwidthEl.textContent = `${(ikev2Data.bandwidth || 0).toFixed(1)} MB/s`;
+    if (ikev2BandwidthEl) ikev2BandwidthEl.textContent = formatSpeed(ikev2Data.bandwidth || 0);
     if (ikev2LatencyEl) ikev2LatencyEl.textContent = `${ikev2Data.latency || 0}ms`;
     if (ikev2TransferEl) ikev2TransferEl.textContent = `${(ikev2Data.transfer || 0).toFixed(1)} MB`;
     updateProtocolStatus('ikev2', ikev2Data.active || false);
