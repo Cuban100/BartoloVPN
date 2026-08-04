@@ -403,6 +403,9 @@ def create_env_file(config):
     jwt_secret = secrets.token_hex(32)
     print("🔑 Generated a random JWT_SECRET_KEY")
 
+    region_agent_encryption_key = secrets.token_hex(32)
+    print("🔑 Generated a random REGION_AGENT_ENCRYPTION_KEY")
+
     ikev2_psk = generate_ikev2_psk()
     print(f"🔑 Generated IKEv2 pre-shared key: {ikev2_psk}")
 
@@ -460,6 +463,10 @@ BANDWIDTH_LIMIT_MB=1000
 JWT_SECRET_KEY={jwt_secret}
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=10080
+
+# Encrypts remote-region agent API keys at rest (multi-region feature,
+# see api/region_service.py). Auto-generated per install.
+REGION_AGENT_ENCRYPTION_KEY={region_agent_encryption_key}
 
 # Network Configuration
 LOCAL_IP={config['server_ip']}

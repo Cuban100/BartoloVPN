@@ -108,6 +108,7 @@ Make sure to set strong credentials for:
 - `WEB_PASSWORD`
 - `JWT_SECRET_KEY`
 - `IKEV2_PSK`
+- `REGION_AGENT_ENCRYPTION_KEY` (only needed if you use the multi-region feature - see `MULTI-REGION.md`)
 
 ### 3. Start the Services
 ```bash
@@ -142,6 +143,7 @@ IKEV2_PSK=your-ikev2-pre-shared-key
 
 # Security
 JWT_SECRET_KEY=your-super-secret-jwt-key
+REGION_AGENT_ENCRYPTION_KEY=your-region-agent-encryption-key
 ```
 
 ### VPN Client Setup

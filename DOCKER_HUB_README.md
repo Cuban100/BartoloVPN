@@ -254,6 +254,7 @@ IKEV2_PSK=your-ikev2-pre-shared-key
 # Security
 JWT_SECRET_KEY=your-super-secret-jwt-key
 JWT_EXPIRE_MINUTES=10080
+REGION_AGENT_ENCRYPTION_KEY=your-region-agent-encryption-key
 ```
 
 ### Volumes (as mounted by docker-compose.yml)
