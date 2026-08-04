@@ -18,7 +18,9 @@ here, so no DB migration was needed for this to work retroactively too.
 """
 
 import asyncio
+import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
 from typing import Dict, Optional
@@ -30,8 +32,62 @@ from database import AsyncSessionLocal, DnsQueryLog
 logger = logging.getLogger(__name__)
 
 DOCKER_LOG_PROXY_URL = "http://127.0.0.1:2375"
-DNS_SOURCE_CONTAINERS = ["bartolo-wireguard", "bartolo-openvpn-dns"]
+# Compose *service* names, not hardcoded container names - container_name:
+# is intentionally not set in docker-compose.yml (see main.py's
+# _resolve_sibling_container for why), so the real container name has to
+# be looked up via compose labels instead of assumed.
+DNS_SOURCE_SERVICES = ["wireguard", "openvpn-dns"]
 POLL_INTERVAL_SECONDS = 10
+
+_sibling_container_cache: Dict[str, str] = {}
+
+
+async def _resolve_sibling_container(service_name: str) -> Optional[str]:
+    """Same approach as VPNManager._resolve_sibling_container in main.py -
+    duplicated here rather than imported since this module has no access
+    to a VPNManager instance and this is a small, self-contained lookup."""
+    if service_name in _sibling_container_cache:
+        return _sibling_container_cache[service_name]
+
+    own_id = os.environ.get("HOSTNAME", "")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{DOCKER_LOG_PROXY_URL}/containers/{own_id}/json",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status >= 400:
+                    logger.warning(f"Could not inspect own container to resolve compose project (HTTP {resp.status})")
+                    return None
+                own_info = await resp.json()
+            project = own_info.get("Config", {}).get("Labels", {}).get("com.docker.compose.project")
+            if not project:
+                logger.warning("Own container has no com.docker.compose.project label - can't resolve sibling containers")
+                return None
+
+            filters = json.dumps({
+                "label": [f"com.docker.compose.project={project}", f"com.docker.compose.service={service_name}"]
+            })
+            async with session.get(
+                f"{DOCKER_LOG_PROXY_URL}/containers/json",
+                params={"filters": filters},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status >= 400:
+                    logger.warning(f"Could not list containers to resolve compose service '{service_name}' (HTTP {resp.status})")
+                    return None
+                matches = await resp.json()
+    except Exception as e:
+        logger.warning(f"Failed to resolve container for compose service '{service_name}': {e}")
+        return None
+
+    if not matches:
+        logger.warning(f"No running container found for compose service '{service_name}' in project '{project}'")
+        return None
+
+    resolved = matches[0]["Names"][0].lstrip("/")
+    _sibling_container_cache[service_name] = resolved
+    return resolved
 
 # CoreDNS's default `log` plugin format, e.g.:
 # [INFO] 10.13.13.4:51234 - 12345 "A IN example.com. udp 512 false 4096" NOERROR qr,aa,rd 100 0.000123456s
@@ -115,8 +171,10 @@ async def poll_dns_queries_once():
     """Poll every CoreDNS source (WireGuard's built-in instance, OpenVPN's
     standalone one) for new query log lines and store them."""
     all_entries = []
-    for container in DNS_SOURCE_CONTAINERS:
-        all_entries.extend(await _poll_container(container))
+    for service_name in DNS_SOURCE_SERVICES:
+        container = await _resolve_sibling_container(service_name)
+        if container:
+            all_entries.extend(await _poll_container(container))
 
     if not all_entries:
         return

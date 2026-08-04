@@ -208,6 +208,11 @@ class VPNManager:
         # Serializes WireGuard peer add/remove so IP allocation and
         # wg_confs/wg0.conf edits can't race each other.
         self.wireguard_peer_lock = asyncio.Lock()
+        # compose service name -> resolved container name, see
+        # _resolve_sibling_container. Safe to cache for the process
+        # lifetime since a service's container doesn't change identity
+        # without a full recreate (which would restart vpn-api too).
+        self._sibling_container_cache: Dict[str, str] = {}
 
     async def _get_wireguard_server_public_key(self) -> str:
         """The server's public key, read live from the running interface.
@@ -280,7 +285,7 @@ class VPNManager:
         vpn-api doesn't share a network namespace with the openvpn container
         (unlike wireguard), so this has to go through the exec proxy rather
         than reading a shared/local file."""
-        exit_code, output = await self._docker_exec("bartolo-openvpn", ["cat", "/tmp/openvpn-status.log"])
+        exit_code, output = await self._docker_exec("openvpn", ["cat", "/tmp/openvpn-status.log"])
         if exit_code != 0:
             return []
 
@@ -345,7 +350,7 @@ class VPNManager:
         """Same idea as ping_peer_ms, but has to run inside the openvpn
         container since vpn-api has no direct route to its tun0 subnet."""
         try:
-            exit_code, output = await self._docker_exec("bartolo-openvpn", ["ping", "-c", "1", "-W", "1", virtual_ip])
+            exit_code, output = await self._docker_exec("openvpn", ["ping", "-c", "1", "-W", "1", virtual_ip])
             if exit_code != 0:
                 return None
             match = re.search(r'time=([\d.]+)', output)
@@ -763,11 +768,70 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
                 last_updated=datetime.now()
             )
     
-    async def _docker_exec(self, container: str, cmd: List[str], env: Optional[List[str]] = None) -> tuple:
+    async def _resolve_sibling_container(self, service_name: str) -> str:
+        """Find the actual container name for a sibling compose service
+        (e.g. "openvpn", "wireguard", "ikev2"), instead of assuming a fixed,
+        hardcoded container name.
+
+        docker-compose.yml intentionally does NOT set container_name: on
+        any service - a hardcoded name is global across the whole Docker
+        host, so any second clone of this repo running `docker-compose up`
+        in a different directory would silently steal/replace the real
+        production containers by reusing the same names (this happened in
+        production more than once). Without container_name, Compose
+        prefixes each container with its own project name (derived from
+        the directory), so two different directories never collide - but
+        it also means the actual container name isn't fixed or guessable
+        by this code, so it has to be looked up via the compose labels
+        Docker itself attaches to every container.
+        """
+        if service_name in self._sibling_container_cache:
+            return self._sibling_container_cache[service_name]
+
+        proxy_url = "http://127.0.0.1:2375"
+        own_id = os.environ.get("HOSTNAME", "")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{proxy_url}/containers/{own_id}/json",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status >= 400:
+                    raise HTTPException(status_code=502, detail=f"Could not inspect own container to resolve compose project (HTTP {resp.status})")
+                own_info = await resp.json()
+            project = own_info.get("Config", {}).get("Labels", {}).get("com.docker.compose.project")
+            if not project:
+                raise HTTPException(status_code=502, detail="Own container has no com.docker.compose.project label - can't resolve sibling containers")
+
+            filters = json.dumps({
+                "label": [f"com.docker.compose.project={project}", f"com.docker.compose.service={service_name}"]
+            })
+            async with session.get(
+                f"{proxy_url}/containers/json",
+                params={"filters": filters},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status >= 400:
+                    raise HTTPException(status_code=502, detail=f"Could not list containers to resolve compose service '{service_name}' (HTTP {resp.status})")
+                matches = await resp.json()
+
+        if not matches:
+            raise HTTPException(status_code=502, detail=f"No running container found for compose service '{service_name}' in project '{project}'")
+
+        # Docker's API returns names with a leading slash, e.g. "/bartolovpn-openvpn-1"
+        resolved = matches[0]["Names"][0].lstrip("/")
+        self._sibling_container_cache[service_name] = resolved
+        return resolved
+
+    async def _docker_exec(self, service_name: str, cmd: List[str], env: Optional[List[str]] = None) -> tuple:
         """Run a command inside another container via the scoped docker-log-proxy
         (container list/inspect/logs/exec only - see docker-compose.yml).
         Needed because the openvpn container's easyrsa toolchain doesn't
-        exist anywhere else. Returns (exit_code, combined_output)."""
+        exist anywhere else. `service_name` is a compose *service* name
+        (e.g. "openvpn"), resolved to the real running container name via
+        _resolve_sibling_container - never a hardcoded "bartolo-*" name,
+        since that name isn't fixed (see _resolve_sibling_container).
+        Returns (exit_code, combined_output)."""
+        container = await self._resolve_sibling_container(service_name)
         proxy_url = "http://127.0.0.1:2375"
         async with aiohttp.ClientSession() as session:
             create_body = {
@@ -843,7 +907,7 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
                 # anywhere in the shared config volume - so the actual cert
                 # signing has to run there, via the scoped exec proxy.
                 exit_code, output = await self._docker_exec(
-                    "bartolo-openvpn",
+                    "openvpn",
                     ["easyrsa", "build-client-full", client_name, "nopass"],
                     env=["EASYRSA_BATCH=1"]
                 )
@@ -962,14 +1026,14 @@ key-direction 1
             # exec proxy rather than a local ./easyrsa that never exists.
             try:
                 exit_code, output = await self._docker_exec(
-                    "bartolo-openvpn",
+                    "openvpn",
                     ["easyrsa", "revoke", client_name],
                     env=["EASYRSA_BATCH=1"]
                 )
                 if exit_code != 0:
                     logger.warning(f"Failed to revoke certificate for {client_name}: {output}")
                 else:
-                    gen_crl_exit, gen_crl_output = await self._docker_exec("bartolo-openvpn", ["easyrsa", "gen-crl"], env=["EASYRSA_BATCH=1"])
+                    gen_crl_exit, gen_crl_output = await self._docker_exec("openvpn", ["easyrsa", "gen-crl"], env=["EASYRSA_BATCH=1"])
                     if gen_crl_exit != 0:
                         logger.warning(f"Failed to regenerate CRL after revoking {client_name}: {gen_crl_output}")
             except Exception as e:
@@ -1000,28 +1064,36 @@ key-direction 1
         """Completely uninstall WireGuard service"""
         try:
             logger.info("Starting WireGuard uninstallation")
-            
-            # Stop WireGuard service
+
+            # Stop and remove the container. Best-effort: this codepath
+            # shells out to a local `docker` binary that isn't installed
+            # in this image, so it's a pre-existing no-op today (caught by
+            # the bare excepts below) - not something this fix addresses,
+            # only the container name it would use if that were resolved.
             try:
-                stop_process = await asyncio.create_subprocess_exec(
-                    'docker', 'stop', 'bartolo-wireguard',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await stop_process.communicate()
-            except:
-                pass
-            
-            # Remove container
-            try:
-                rm_process = await asyncio.create_subprocess_exec(
-                    'docker', 'rm', 'bartolo-wireguard',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await rm_process.communicate()
-            except:
-                pass
+                wireguard_container = await self._resolve_sibling_container("wireguard")
+            except HTTPException:
+                wireguard_container = None
+            if wireguard_container:
+                try:
+                    stop_process = await asyncio.create_subprocess_exec(
+                        'docker', 'stop', wireguard_container,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await stop_process.communicate()
+                except:
+                    pass
+
+                try:
+                    rm_process = await asyncio.create_subprocess_exec(
+                        'docker', 'rm', wireguard_container,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await rm_process.communicate()
+                except:
+                    pass
             
             # Remove configuration directory
             import shutil
@@ -1045,28 +1117,32 @@ key-direction 1
         """Completely uninstall OpenVPN service"""
         try:
             logger.info("Starting OpenVPN uninstallation")
-            
-            # Stop OpenVPN service
+
+            # See uninstall_wireguard for why this is best-effort/pre-existing dead code.
             try:
-                stop_process = await asyncio.create_subprocess_exec(
-                    'docker', 'stop', 'bartolo-openvpn',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await stop_process.communicate()
-            except:
-                pass
-            
-            # Remove container
-            try:
-                rm_process = await asyncio.create_subprocess_exec(
-                    'docker', 'rm', 'bartolo-openvpn',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await rm_process.communicate()
-            except:
-                pass
+                openvpn_container = await self._resolve_sibling_container("openvpn")
+            except HTTPException:
+                openvpn_container = None
+            if openvpn_container:
+                try:
+                    stop_process = await asyncio.create_subprocess_exec(
+                        'docker', 'stop', openvpn_container,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await stop_process.communicate()
+                except:
+                    pass
+
+                try:
+                    rm_process = await asyncio.create_subprocess_exec(
+                        'docker', 'rm', openvpn_container,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await rm_process.communicate()
+                except:
+                    pass
             
             # Remove configuration directory
             import shutil
@@ -1090,28 +1166,32 @@ key-direction 1
         """Completely uninstall IKEv2 service"""
         try:
             logger.info("Starting IKEv2 uninstallation")
-            
-            # Stop IKEv2 service
+
+            # See uninstall_wireguard for why this is best-effort/pre-existing dead code.
             try:
-                stop_process = await asyncio.create_subprocess_exec(
-                    'docker', 'stop', 'bartolo-ikev2',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await stop_process.communicate()
-            except:
-                pass
-            
-            # Remove container
-            try:
-                rm_process = await asyncio.create_subprocess_exec(
-                    'docker', 'rm', 'bartolo-ikev2',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await rm_process.communicate()
-            except:
-                pass
+                ikev2_container = await self._resolve_sibling_container("ikev2")
+            except HTTPException:
+                ikev2_container = None
+            if ikev2_container:
+                try:
+                    stop_process = await asyncio.create_subprocess_exec(
+                        'docker', 'stop', ikev2_container,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await stop_process.communicate()
+                except:
+                    pass
+
+                try:
+                    rm_process = await asyncio.create_subprocess_exec(
+                        'docker', 'rm', ikev2_container,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await rm_process.communicate()
+                except:
+                    pass
             
             # Remove configuration directory
             import shutil
