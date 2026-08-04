@@ -1,0 +1,15 @@
+# Overrides linuxserver/wireguard's own auto-generated Corefile, which has
+# no `log` plugin (so the Activity page never captured real peer DNS
+# queries) and forwards to /etc/resolv.conf, which can loop back on itself
+# depending on the host's resolver chain - CoreDNS's `loop` plugin then logs
+# a canary probe (two random numbers, e.g. "4148863610893235485.505215...")
+# that api/dns_activity.py's parser was mistaking for a real queried domain.
+# Forwarding straight to public resolvers avoids the loop entirely, matching
+# config/openvpn-dns/Corefile's already-working setup.
+. {
+    log
+    loop
+    errors
+    health
+    forward . 1.1.1.1 8.8.8.8
+}

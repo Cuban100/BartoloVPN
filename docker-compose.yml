@@ -20,6 +20,7 @@ services:
       - LOG_CONFS=true
     volumes:
       - ./config/wireguard:/config
+      - ./config/wireguard-coredns/Corefile:/config/coredns/Corefile:ro
       - /lib/modules:/lib/modules
     ports:
       - "${WIREGUARD_PORT:-51820}:51820/udp"

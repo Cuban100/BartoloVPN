@@ -150,6 +150,15 @@ async def _poll_container(container: str) -> list:
         match = _LOG_LINE_RE.search(rest)
         if not match:
             continue
+        domain = match.group("domain")
+        if not any(c.isalpha() for c in domain):
+            # Real domains always have an alphabetic TLD. This also happens
+            # to reject CoreDNS's `loop` plugin canary probes (e.g.
+            # "4148863610893235485.505215156570136642"), which loosely
+            # match this same line shape but aren't a real query - see
+            # config/wireguard-coredns/Corefile for the actual fix
+            # (forwarding target that avoids the loop).
+            continue
         try:
             # Docker emits RFC3339Nano timestamps; keep only microsecond precision
             dt = datetime.strptime(ts_str[:26], "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=timezone.utc)
@@ -158,7 +167,7 @@ async def _poll_container(container: str) -> list:
         epoch = dt.timestamp()
         if max_epoch is None or epoch > max_epoch:
             max_epoch = epoch
-        entries.append((dt, match.group("ip"), match.group("domain")))
+        entries.append((dt, match.group("ip"), domain))
 
     if max_epoch is not None:
         # nudge past the last seen line so it isn't re-fetched next poll
