@@ -233,3 +233,10 @@ dist/
 # Local configuration overrides
 config.local.*
 settings.local.*
+
+# Operator's own SSH keys for connecting to VPS boxes - a convenient,
+# git-safe place to keep them alongside the project. Never commit real
+# key material: everything here is ignored except the placeholder that
+# keeps the empty folder itself present in the repo.
+.ssh/*
+!.ssh/README.md
