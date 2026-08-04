@@ -923,6 +923,7 @@ function toggleTheme() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing elements...');
     initThemeToggle();
+    setupCustomSelect('oracle-region');
 
     // Initialize DOM elements
     loginScreen = document.getElementById('login-screen');
@@ -1728,6 +1729,7 @@ async function loadSettings() {
         setValueIfPresent('oracle-user-ocid', s.oracle_user_ocid);
         setValueIfPresent('oracle-fingerprint', s.oracle_fingerprint);
         setValueIfPresent('oracle-region', s.oracle_region);
+        syncCustomSelectLabel('oracle-region');
 
         const apiKeyStatus = document.getElementById('oracle-api-key-status');
         if (apiKeyStatus) {
@@ -1752,6 +1754,95 @@ function setValueIfPresent(elementId, value) {
 function setCheckedIfPresent(elementId, value) {
     const el = document.getElementById(elementId);
     if (el && value !== null && value !== undefined) el.checked = value;
+}
+
+// Renders a custom-styled dropdown driven by a hidden <select>, since Linux
+// Chrome renders a native <select>'s open popup outside CSS's reach (see
+// the comment in settings.html above #oracle-region-dropdown). The hidden
+// select stays the single source of truth for options and value - existing
+// getValue()/setValueIfPresent() calls on its id keep working unchanged.
+// Wire up once per page load (elements persist across tab switches, so
+// calling this again would stack duplicate listeners); call
+// syncCustomSelectLabel() after anything sets the select's value
+// programmatically (e.g. loadSettings) to keep the visible label in sync.
+function setupCustomSelect(selectId) {
+    const select = document.getElementById(selectId);
+    const dropdown = document.getElementById(`${selectId}-dropdown`);
+    const trigger = document.getElementById(`${selectId}-trigger`);
+    const panel = document.getElementById(`${selectId}-panel`);
+    const label = document.getElementById(`${selectId}-trigger-label`);
+    if (!select || !dropdown || !trigger || !panel || !label) return;
+
+    const placeholder = label.textContent;
+
+    panel.innerHTML = '';
+    Array.from(select.children).forEach(child => {
+        if (child.tagName === 'OPTGROUP') {
+            const groupLabel = document.createElement('div');
+            groupLabel.className = 'custom-dropdown-optgroup-label';
+            groupLabel.textContent = child.label;
+            panel.appendChild(groupLabel);
+            Array.from(child.children).forEach(opt => panel.appendChild(buildCustomOption(opt)));
+        } else if (child.tagName === 'OPTION' && child.value) {
+            panel.appendChild(buildCustomOption(child));
+        }
+    });
+
+    function buildCustomOption(opt) {
+        const item = document.createElement('div');
+        item.className = 'custom-dropdown-option';
+        item.textContent = opt.textContent;
+        item.dataset.value = opt.value;
+        item.addEventListener('click', () => {
+            select.value = opt.value;
+            select.dispatchEvent(new Event('change'));
+            syncCustomSelectLabel(selectId);
+            closePanel();
+        });
+        return item;
+    }
+
+    function openPanel() {
+        panel.hidden = false;
+        trigger.classList.add('open');
+    }
+
+    function closePanel() {
+        panel.hidden = true;
+        trigger.classList.remove('open');
+    }
+
+    trigger.addEventListener('click', () => {
+        panel.hidden ? openPanel() : closePanel();
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target)) closePanel();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closePanel();
+    });
+
+    label.textContent = select.value
+        ? (select.querySelector(`option[value="${CSS.escape(select.value)}"]`)?.textContent || placeholder)
+        : placeholder;
+}
+
+function syncCustomSelectLabel(selectId) {
+    const select = document.getElementById(selectId);
+    const label = document.getElementById(`${selectId}-trigger-label`);
+    const panel = document.getElementById(`${selectId}-panel`);
+    if (!select || !label) return;
+
+    const selectedOption = select.value ? select.querySelector(`option[value="${CSS.escape(select.value)}"]`) : null;
+    label.textContent = selectedOption ? selectedOption.textContent : 'Select a region...';
+
+    if (panel) {
+        panel.querySelectorAll('.custom-dropdown-option').forEach(item => {
+            item.classList.toggle('selected', item.dataset.value === select.value);
+        });
+    }
 }
 
 async function loadOracleSshKeys(selectedKeyName) {

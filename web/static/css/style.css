@@ -484,6 +484,84 @@ body:has(.login-container) .footer,
     color: var(--text-primary);
 }
 
+/* Custom dropdown - stands in for a native <select> popup where the
+   browser won't let CSS theme it (see settings.html's oracle-region-dropdown
+   for why). Fully author-rendered, so it always matches the app theme. */
+.custom-dropdown {
+    position: relative;
+}
+
+.custom-dropdown-trigger {
+    width: 100%;
+    padding: 0.75rem;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-family: inherit;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+.custom-dropdown-trigger:focus,
+.custom-dropdown-trigger.open {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgb(99 102 241 / 0.1);
+}
+
+.custom-dropdown-trigger i {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.custom-dropdown-panel {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    left: 0;
+    right: 0;
+    max-height: 20rem;
+    overflow-y: auto;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 50;
+}
+
+.custom-dropdown-optgroup-label {
+    padding: 0.5rem 0.75rem 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.custom-dropdown-option {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.custom-dropdown-option:hover,
+.custom-dropdown-option.active {
+    background-color: var(--bg-tertiary);
+}
+
+.custom-dropdown-option.selected {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
