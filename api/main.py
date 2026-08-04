@@ -1596,7 +1596,12 @@ async def get_system_status(current_user: dict = Depends(get_current_user)):
 @app.get("/api/system/resources")
 async def get_system_resources(current_user: dict = Depends(get_current_user)):
     """Get system resources (CPU, Memory, Disk, VPN status, Network) - what
-    the Monitoring page's System Overview and VPN Performance widgets read."""
+    the Monitoring page's System Overview and VPN Performance widgets read.
+    The local WireGuard and OpenVPN stats fetches are individually isolated
+    (own try/except) so one of them failing - e.g. the docker-log-proxy
+    sidecar OpenVPN stats depend on being unreachable - doesn't blank CPU/
+    memory/disk and the other protocol's figures along with it, matching
+    the same fix already applied to /api/system/connections."""
     try:
         # Get CPU usage
         cpu_percent = psutil.cpu_percent(interval=1)
@@ -1613,10 +1618,41 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
         # "Connected" means a handshake within the last 3 minutes - WireGuard
         # peers re-handshake roughly every 2 minutes while active, so a wider
         # gap means the tunnel has actually gone idle/dropped.
-        wg_peers = await vpn_manager.get_wireguard_peer_stats()
+        try:
+            wg_peers = await vpn_manager.get_wireguard_peer_stats()
+        except Exception as e:
+            logger.warning(f"Could not fetch local WireGuard stats for VPN Performance: {e}")
+            wg_peers = []
         now = datetime.now().timestamp()
-        wg_active_peers = [p for p in wg_peers if p['latest_handshake'] and (now - p['latest_handshake']) < 180]
+        local_active_peers = [p for p in wg_peers if p['latest_handshake'] and (now - p['latest_handshake']) < 180]
+        wg_active_peers = list(local_active_peers)  # gains remote regions' peers below, for the count/transfer figures only
         wg_total_bytes = sum(p['rx_bytes'] + p['tx_bytes'] for p in wg_peers)
+
+        # Fold in every active remote region's peers too - a region is just
+        # another physical WireGuard server, so its connections belong in
+        # the same "wireguard" bucket, not a separate one. An unreachable
+        # region just contributes nothing, same degrade-gracefully rule as
+        # the region-aware routes elsewhere. Remote peer IPs live on that
+        # box's own private LAN, not reachable for a real ping from here
+        # (and could even collide with an unrelated local address in the
+        # same default subnet), so latency below only ever pings
+        # local_active_peers, never these.
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Region).where(Region.is_active == True, Region.is_local == False)
+            )
+            remote_regions_for_resources = result.scalars().all()
+        for region in remote_regions_for_resources:
+            try:
+                region_client = region_service.build_region_client(region)
+                region_peers = await region_client.get_peer_stats()
+            except Exception as e:
+                logger.warning(f"Could not fetch VPN Performance stats for region {region.slug}: {e}")
+                continue
+            region_active = [p for p in region_peers if p['latest_handshake'] and (now - p['latest_handshake']) < 180]
+            wg_active_peers.extend(region_active)
+            wg_total_bytes += sum(p['rx_bytes'] + p['tx_bytes'] for p in region_peers)
+
         wg_transfer_mb = wg_total_bytes / (1024 ** 2)
 
         # System-wide network throughput (all interfaces combined - includes
@@ -1649,8 +1685,8 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
         # which is fine - those just don't contribute to the average rather
         # than faking a number).
         wg_latency_ms = 0
-        if wg_active_peers:
-            pings = await asyncio.gather(*[vpn_manager.ping_peer_ms(p['ip']) for p in wg_active_peers if p['ip']])
+        if local_active_peers:
+            pings = await asyncio.gather(*[vpn_manager.ping_peer_ms(p['ip']) for p in local_active_peers if p['ip']])
             valid_pings = [p for p in pings if p is not None]
             if valid_pings:
                 wg_latency_ms = round(sum(valid_pings) / len(valid_pings), 1)
@@ -1659,7 +1695,11 @@ async def get_system_resources(current_user: dict = Depends(get_current_user)):
         # honesty rules as WireGuard above: bandwidth from a live delta,
         # latency from real pings, zero/false rather than a guess if there's
         # nothing connected or nothing responds.
-        ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+        try:
+            ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+        except Exception as e:
+            logger.warning(f"Could not fetch local OpenVPN stats for VPN Performance: {e}")
+            ovpn_clients = []
         ovpn_total_bytes = sum(c['rx_bytes'] + c['tx_bytes'] for c in ovpn_clients)
         ovpn_transfer_mb = ovpn_total_bytes / (1024 ** 2)
 

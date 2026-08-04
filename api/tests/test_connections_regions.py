@@ -155,3 +155,51 @@ def test_disconnect_remote_connection_routes_to_region_agent(client, admin_heade
     resp = client.delete(f"/api/system/connections/{registered_stats_region}:rmv1", headers=admin_headers)
     assert resp.status_code == 200, resp.text
     assert _FakeStatsAgentHandler.stats == []
+
+
+def test_vpn_performance_widget_counts_remote_peers(client, admin_headers, registered_stats_region):
+    """/api/system/resources feeds the Monitoring page's "VPN Performance"
+    card - same gap as /api/system/connections had, different endpoint: a
+    connected remote-region peer must count toward the wireguard
+    connections/transfer figures, not just show as 0/Inactive."""
+    _FakeStatsAgentHandler.stats = [{
+        "public_key": "fakepub",
+        "name": "prf1",
+        "ip": "10.13.13.9",
+        "latest_handshake": int(time.time()),
+        "rx_bytes": 5 * 1024 * 1024,
+        "tx_bytes": 3 * 1024 * 1024,
+    }]
+
+    resp = client.get("/api/system/resources", headers=admin_headers)
+    assert resp.status_code == 200, resp.text
+    wg = resp.json()["vpn"]["wireguard"]
+    assert wg["connections"] >= 1
+    assert wg["active"] is True
+    assert wg["transfer"] >= 8.0
+
+
+def test_vpn_performance_widget_degrades_gracefully_when_region_unreachable(client, admin_headers, fake_stats_agent):
+    server, url = fake_stats_agent
+    resp = client.post(
+        "/regions",
+        json={
+            "slug": "flaky-perf-region",
+            "display_name": "Flaky Perf Region",
+            "country_code": "jp",
+            "agent_url": url,
+            "agent_key": "0123456789abcdef",
+            "wireguard_endpoint_host": "203.0.113.60",
+        },
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    region_id = resp.json()["id"]
+
+    server.shutdown()
+
+    resources_resp = client.get("/api/system/resources", headers=admin_headers)
+    assert resources_resp.status_code == 200
+    assert "error" not in resources_resp.json()
+
+    client.delete(f"/regions/{region_id}", headers=admin_headers)
