@@ -56,8 +56,15 @@
                     <small class="form-help">Minimum 6 characters</small>
                 </div>
                 <div class="form-group">
-                    <label for="user-role">Role</label>
-                    <select id="user-role" name="user-role" required>
+                    <label for="user-role-trigger">Role</label>
+                    <div class="custom-dropdown" id="user-role-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="user-role-trigger">
+                            <span id="user-role-trigger-label">User</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="user-role-panel" hidden></div>
+                    </div>
+                    <select id="user-role" name="user-role" required style="display: none;">
                         <option value="user">User</option>
                         <option value="admin">Admin</option>
                     </select>
@@ -116,16 +123,30 @@
                     <small class="form-help">Minimum 6 characters - leave blank to keep current password</small>
                 </div>
                 <div class="form-group">
-                    <label for="edit-user-role">Role</label>
-                    <select id="edit-user-role" name="edit-user-role" required>
+                    <label for="edit-user-role-trigger">Role</label>
+                    <div class="custom-dropdown" id="edit-user-role-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="edit-user-role-trigger">
+                            <span id="edit-user-role-trigger-label">User</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="edit-user-role-panel" hidden></div>
+                    </div>
+                    <select id="edit-user-role" name="edit-user-role" required style="display: none;">
                         <option value="user">User</option>
                         <option value="admin">Admin</option>
                     </select>
                     <small class="form-help">Admins can manage users and server settings</small>
                 </div>
                 <div class="form-group">
-                    <label for="edit-user-status">Status</label>
-                    <select id="edit-user-status" name="edit-user-status" required>
+                    <label for="edit-user-status-trigger">Status</label>
+                    <div class="custom-dropdown" id="edit-user-status-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="edit-user-status-trigger">
+                            <span id="edit-user-status-trigger-label">Active</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="edit-user-status-panel" hidden></div>
+                    </div>
+                    <select id="edit-user-status" name="edit-user-status" required style="display: none;">
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                         <option value="suspended">Suspended</option>

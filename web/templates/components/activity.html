@@ -8,10 +8,24 @@
     <div class="section-header">
         <h3>Recent DNS Activity</h3>
         <div class="section-actions">
-            <select id="activity-peer-filter" class="form-control" style="width: auto;" onchange="loadDnsActivity(1)">
+            <div class="custom-dropdown custom-dropdown-compact" id="activity-peer-filter-dropdown">
+                <button type="button" class="custom-dropdown-trigger" id="activity-peer-filter-trigger">
+                    <span id="activity-peer-filter-trigger-label">All peers/clients</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="custom-dropdown-panel" id="activity-peer-filter-panel" hidden></div>
+            </div>
+            <select id="activity-peer-filter" onchange="loadDnsActivity(1)" style="display: none;">
                 <option value="">All peers/clients</option>
             </select>
-            <select id="activity-protocol-filter" class="form-control" style="width: auto;" onchange="loadDnsActivity(1)">
+            <div class="custom-dropdown custom-dropdown-compact" id="activity-protocol-filter-dropdown">
+                <button type="button" class="custom-dropdown-trigger" id="activity-protocol-filter-trigger">
+                    <span id="activity-protocol-filter-trigger-label">All protocols</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="custom-dropdown-panel" id="activity-protocol-filter-panel" hidden></div>
+            </div>
+            <select id="activity-protocol-filter" onchange="loadDnsActivity(1)" style="display: none;">
                 <option value="">All protocols</option>
                 <option value="WireGuard">WireGuard</option>
                 <option value="OpenVPN">OpenVPN</option>

@@ -111,16 +111,30 @@
                     <small class="form-help">Must be 3-50 characters long. Used as certificate common name.</small>
                 </div>
                 <div class="form-group">
-                    <label for="openvpn-client-protocol">Protocol</label>
-                    <select id="openvpn-client-protocol" name="openvpn-client-protocol" required>
+                    <label for="openvpn-client-protocol-trigger">Protocol</label>
+                    <div class="custom-dropdown" id="openvpn-client-protocol-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="openvpn-client-protocol-trigger">
+                            <span id="openvpn-client-protocol-trigger-label">UDP (Recommended)</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="openvpn-client-protocol-panel" hidden></div>
+                    </div>
+                    <select id="openvpn-client-protocol" name="openvpn-client-protocol" required style="display: none;">
                         <option value="udp">UDP (Recommended)</option>
                         <option value="tcp">TCP</option>
                     </select>
                     <small class="form-help">UDP is faster, TCP is more reliable through firewalls</small>
                 </div>
                 <div class="form-group">
-                    <label for="openvpn-client-cipher">Encryption Cipher</label>
-                    <select id="openvpn-client-cipher" name="openvpn-client-cipher" required>
+                    <label for="openvpn-client-cipher-trigger">Encryption Cipher</label>
+                    <div class="custom-dropdown" id="openvpn-client-cipher-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="openvpn-client-cipher-trigger">
+                            <span id="openvpn-client-cipher-trigger-label">AES-256-GCM (Recommended)</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="openvpn-client-cipher-panel" hidden></div>
+                    </div>
+                    <select id="openvpn-client-cipher" name="openvpn-client-cipher" required style="display: none;">
                         <option value="AES-256-GCM">AES-256-GCM (Recommended)</option>
                         <option value="AES-128-GCM">AES-128-GCM</option>
                         <option value="AES-256-CBC">AES-256-CBC</option>
@@ -128,8 +142,15 @@
                     <small class="form-help">Higher encryption provides better security</small>
                 </div>
                 <div class="form-group">
-                    <label for="openvpn-client-region">DNS Region</label>
-                    <select id="openvpn-client-region" name="openvpn-client-region">
+                    <label for="openvpn-client-region-trigger">DNS Region</label>
+                    <div class="custom-dropdown" id="openvpn-client-region-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="openvpn-client-region-trigger">
+                            <span id="openvpn-client-region-trigger-label">Default (no override)</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="openvpn-client-region-panel" hidden></div>
+                    </div>
+                    <select id="openvpn-client-region" name="openvpn-client-region" style="display: none;">
                         <option value="default">Default (no override)</option>
                         <option value="sweden">Sweden</option>
                     </select>

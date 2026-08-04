@@ -927,6 +927,19 @@ document.addEventListener('DOMContentLoaded', function() {
     setupCustomSelect('region-country-code');
     setupCustomSelect('oracle-add-region-country-code');
     setupCustomSelect('peer-region');
+    setupCustomSelect('timezone');
+    setupCustomSelect('encryption-level');
+    setupCustomSelect('log-level');
+    setupCustomSelect('oracle-ssh-key');
+    setupCustomSelect('refresh-interval');
+    setupCustomSelect('openvpn-client-protocol');
+    setupCustomSelect('openvpn-client-cipher');
+    setupCustomSelect('openvpn-client-region');
+    setupCustomSelect('user-role');
+    setupCustomSelect('edit-user-role');
+    setupCustomSelect('edit-user-status');
+    setupCustomSelect('activity-peer-filter');
+    setupCustomSelect('activity-protocol-filter');
     initRegionCountryAutofill();
 
     // Initialize DOM elements
@@ -1446,6 +1459,8 @@ async function loadDnsActivity(page) {
                     `<option value="${escapeHtml(ip)}">${escapeHtml(name)}</option>`
                 ).join('');
             peerFilter.value = currentValue;
+            refreshCustomSelectPanel('activity-peer-filter');
+            syncCustomSelectLabel('activity-peer-filter');
         }
 
         if (!tableBody) return;
@@ -1998,7 +2013,15 @@ function syncCustomSelectLabel(selectId) {
     if (!select || !label) return;
 
     const selectedOption = select.value ? select.querySelector(`option[value="${CSS.escape(select.value)}"]`) : null;
-    label.textContent = selectedOption ? selectedOption.textContent : 'Select a region...';
+    if (selectedOption) {
+        label.textContent = selectedOption.textContent;
+    } else if (select.options.length > 0) {
+        // Matches native <select> behavior (shows the first option when
+        // nothing else is selected) - this label is shared by every
+        // converted select in the app now, not just region pickers, so
+        // it can't assume a region-specific placeholder string.
+        label.textContent = select.options[0].textContent;
+    }
 
     if (panel) {
         panel.querySelectorAll('.custom-dropdown-option').forEach(item => {
@@ -2016,12 +2039,16 @@ async function loadOracleSshKeys(selectedKeyName) {
         const data = await response.json();
         if (!data.keys || data.keys.length === 0) {
             select.innerHTML = '<option value="">No keys detected under .ssh/</option>';
+            refreshCustomSelectPanel('oracle-ssh-key');
+            syncCustomSelectLabel('oracle-ssh-key');
             return;
         }
         select.innerHTML = data.keys.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join('');
         if (selectedKeyName && data.keys.includes(selectedKeyName)) {
             select.value = selectedKeyName;
         }
+        refreshCustomSelectPanel('oracle-ssh-key');
+        syncCustomSelectLabel('oracle-ssh-key');
     } catch (error) {
         console.error('Error loading SSH keys:', error);
     }

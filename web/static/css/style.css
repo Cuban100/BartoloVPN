@@ -509,7 +509,8 @@ body:has(.login-container) .footer,
     align-items: stretch;
 }
 
-.input-with-action select {
+.input-with-action select,
+.input-with-action .custom-dropdown {
     flex: 1;
     min-width: 0;
 }
@@ -563,6 +564,20 @@ body:has(.login-container) .footer,
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgb(99 102 241 / 0.1);
+}
+
+/* Smaller footprint for inline/toolbar contexts (e.g. Monitoring's
+   auto-refresh interval) instead of the full form-input sizing above. */
+.custom-dropdown-compact {
+    width: auto;
+    min-width: 8rem;
+}
+
+.custom-dropdown-compact .custom-dropdown-trigger {
+    width: auto;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 0.8rem;
+    border-radius: var(--radius-sm);
 }
 
 .custom-dropdown-trigger i {

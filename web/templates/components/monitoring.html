@@ -13,7 +13,14 @@
         <div class="auto-refresh-control">
             <label for="auto-refresh-toggle">Auto Refresh:</label>
             <input type="checkbox" id="auto-refresh-toggle" checked onchange="toggleAutoRefresh()">
-            <select id="refresh-interval" onchange="updateRefreshInterval()">
+            <div class="custom-dropdown custom-dropdown-compact" id="refresh-interval-dropdown">
+                <button type="button" class="custom-dropdown-trigger" id="refresh-interval-trigger">
+                    <span id="refresh-interval-trigger-label">10 seconds</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="custom-dropdown-panel" id="refresh-interval-panel" hidden></div>
+            </div>
+            <select id="refresh-interval" onchange="updateRefreshInterval()" style="display: none;">
                 <option value="5000">5 seconds</option>
                 <option value="10000" selected>10 seconds</option>
                 <option value="30000">30 seconds</option>

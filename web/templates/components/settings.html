@@ -21,8 +21,15 @@
             </div>
             
             <div class="form-group">
-                <label for="timezone">Timezone</label>
-                <select id="timezone">
+                <label for="timezone-trigger">Timezone</label>
+                <div class="custom-dropdown" id="timezone-dropdown">
+                    <button type="button" class="custom-dropdown-trigger" id="timezone-trigger">
+                        <span id="timezone-trigger-label">UTC</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="custom-dropdown-panel" id="timezone-panel" hidden></div>
+                </div>
+                <select id="timezone" style="display: none;">
                     <option value="UTC">UTC</option>
                     <option value="America/New_York">Eastern Time</option>
                     <option value="America/Chicago">Central Time</option>
@@ -46,8 +53,15 @@
             </div>
             
             <div class="form-group">
-                <label for="encryption-level">Encryption Level</label>
-                <select id="encryption-level">
+                <label for="encryption-level-trigger">Encryption Level</label>
+                <div class="custom-dropdown" id="encryption-level-dropdown">
+                    <button type="button" class="custom-dropdown-trigger" id="encryption-level-trigger">
+                        <span id="encryption-level-trigger-label">256-bit</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="custom-dropdown-panel" id="encryption-level-panel" hidden></div>
+                </div>
+                <select id="encryption-level" style="display: none;">
                     <option value="128">128-bit</option>
                     <option value="256" selected>256-bit</option>
                 </select>
@@ -66,8 +80,15 @@
         
         <div class="settings-form">
             <div class="form-group">
-                <label for="log-level">Log Level</label>
-                <select id="log-level">
+                <label for="log-level-trigger">Log Level</label>
+                <div class="custom-dropdown" id="log-level-dropdown">
+                    <button type="button" class="custom-dropdown-trigger" id="log-level-trigger">
+                        <span id="log-level-trigger-label">Info</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="custom-dropdown-panel" id="log-level-panel" hidden></div>
+                </div>
+                <select id="log-level" style="display: none;">
                     <option value="DEBUG">Debug</option>
                     <option value="INFO" selected>Info</option>
                     <option value="WARNING">Warning</option>
@@ -202,9 +223,16 @@
                     <small class="form-help">This is your Oracle tenancy's home region (set once at signup) - check the OCI Console if unsure.</small>
                 </div>
                 <div class="form-group">
-                    <label for="oracle-ssh-key">SSH Key (from .ssh/)</label>
+                    <label for="oracle-ssh-key-trigger">SSH Key (from .ssh/)</label>
                     <div class="input-with-action">
-                        <select id="oracle-ssh-key">
+                        <div class="custom-dropdown" id="oracle-ssh-key-dropdown">
+                            <button type="button" class="custom-dropdown-trigger" id="oracle-ssh-key-trigger">
+                                <span id="oracle-ssh-key-trigger-label">No keys detected under .ssh/</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <div class="custom-dropdown-panel" id="oracle-ssh-key-panel" hidden></div>
+                        </div>
+                        <select id="oracle-ssh-key" style="display: none;">
                             <option value="">No keys detected under .ssh/</option>
                         </select>
                         <button type="button" class="btn-icon" id="oracle-ssh-key-refresh" title="Re-scan .ssh/ for keys" onclick="refreshOracleSshKeys()">
