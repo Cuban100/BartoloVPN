@@ -4,6 +4,7 @@ here - see oracle_service.py's module docstring for why the actual OCI
 integration itself couldn't be exercised against a real account."""
 
 import asyncio
+import gc
 from types import SimpleNamespace
 
 import pytest
@@ -25,6 +26,36 @@ def test_generate_cloud_init_embeds_agent_key_and_port():
     # No dashboard credentials of any kind belong in this script
     assert "DASHBOARD" not in script
     assert "password" not in script.lower()
+
+
+def test_fire_and_forget_task_survives_garbage_collection():
+    """Regression test for a real production bug: asyncio.create_task()
+    only keeps a *weak* reference to the returned Task internally - one
+    with no other strong reference anywhere is eligible for garbage
+    collection mid-execution, silently, with no error raised or logged.
+    This is exactly what happened to a real Oracle region provisioning
+    attempt: the background task vanished partway through, leaving the
+    region row stuck forever showing neither success nor failure.
+    fire_and_forget() must hold a strong reference via
+    main._background_tasks so this can't happen again."""
+    completed = []
+
+    async def slow_coro():
+        await asyncio.sleep(0)
+        gc.collect()  # simulates a GC pass happening while the task is in flight
+        await asyncio.sleep(0)
+        completed.append(True)
+
+    async def scenario():
+        main.fire_and_forget(slow_coro())
+        # Deliberately no other reference to the returned Task is kept
+        # here - if fire_and_forget didn't hold one via _background_tasks,
+        # the gc.collect() above could destroy the task before it finishes.
+        for _ in range(10):
+            await asyncio.sleep(0)
+
+    asyncio.get_event_loop().run_until_complete(scenario())
+    assert completed == [True]
 
 
 async def _enable_oracle_settings():
@@ -244,6 +275,43 @@ def test_provision_oracle_region_full_lifecycle_success(client, admin_headers, m
             assert updated.oracle_instance_id == "ocid1.instance.oc1..lifecycle"
 
     asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_health_check_rejects_region_with_no_agent_instead_of_clobbering_error(client, admin_headers):
+    """Regression test for a real production bug: manually clicking Check
+    on a region that failed to provision (so it never got an agent_url)
+    silently overwrote the real, useful error (e.g. an actual Oracle
+    NotAuthenticated message) with a generic, useless "no agent
+    configured" message - destroying the actual diagnostic info."""
+    async def make_region():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-noagent",
+                display_name="No Agent Yet",
+                country_code="US",
+                is_local=False,
+                agent_url=None,
+                wireguard_endpoint_host="",
+                is_active=False,
+                health_status="failed",
+                last_health_error="Oracle API error (NotAuthenticated): the real, useful error",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+            return region.id
+
+    region_id = asyncio.get_event_loop().run_until_complete(make_region())
+
+    resp = client.post(f"/regions/{region_id}/health-check", headers=admin_headers)
+    assert resp.status_code == 400
+    assert "still provisioning or failed" in resp.json()["detail"]
+
+    # The original, informative error must survive untouched
+    get_resp = client.get("/regions", headers=admin_headers)
+    region_data = next(r for r in get_resp.json() if r["slug"] == "or-noagent")
+    assert region_data["health_status"] == "failed"
+    assert "NotAuthenticated" in region_data["last_health_error"]
 
 
 def test_delete_region_terminates_oracle_instance(client, admin_headers, monkeypatch):

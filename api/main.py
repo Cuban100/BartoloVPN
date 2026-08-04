@@ -1398,6 +1398,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         "last_login": user.last_login
     }
 
+# Holds strong references to fire-and-forget background tasks created from
+# request handlers (e.g. Oracle region provisioning) - asyncio only keeps a
+# *weak* reference to a task via create_task(), so a task with no other
+# reference anywhere is eligible for garbage collection mid-execution, with
+# no error raised or logged anywhere. This bit a real Oracle provisioning
+# attempt in production: the task was silently collected partway through,
+# leaving the region row stuck forever with no success or failure recorded.
+_background_tasks: set = set()
+
+def fire_and_forget(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 # Application lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -2862,7 +2877,7 @@ async def create_oracle_region(region: OracleRegionCreate, current_user: dict = 
         region_id = new_region.id
         result = _region_out(new_region)
 
-    asyncio.create_task(oracle_service.provision_oracle_region(
+    fire_and_forget(oracle_service.provision_oracle_region(
         region_id, region.slug, region.display_name, region.wireguard_port, settings_row
     ))
     return result
@@ -2935,6 +2950,20 @@ async def check_region_health(region_id: int, current_user: dict = Depends(get_c
         region = await session.get(Region, region_id)
         if region is None:
             raise HTTPException(status_code=404, detail="Region not found")
+
+    if not region.is_local and not region.agent_url:
+        # Running a real health check here would just overwrite whatever
+        # informative error the provisioning background task already
+        # recorded (e.g. a real Oracle API error) with a generic "no
+        # agent configured" - destroying the actual diagnostic info. This
+        # happened in production: a real NotAuthenticated error got
+        # silently replaced by an unhelpful message from a manual Check
+        # click. Reject instead of degrading the stored state.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Region '{region.slug}' has no agent yet - it's still provisioning or failed before one "
+                   f"was created. See its current health_status/last_health_error instead of checking manually."
+        )
 
     updated = await region_service.health_check_region(region)
     return _region_out(updated)
