@@ -7,6 +7,7 @@ import asyncio
 import gc
 from types import SimpleNamespace
 
+import oci
 import pytest
 
 import main
@@ -26,6 +27,30 @@ def test_generate_cloud_init_embeds_agent_key_and_port():
     # No dashboard credentials of any kind belong in this script
     assert "DASHBOARD" not in script
     assert "password" not in script.lower()
+
+
+def test_service_error_message_includes_operation_name():
+    """A real production incident traced back to this exact gap: a
+    NotAuthorizedOrNotFound with no indication of *which* OCI call
+    failed (list_vcns? launch_instance?) made it impossible to tell a
+    genuine permission gap from a wrong compartment/resource without
+    pure guesswork. operation_name pinpoints it."""
+    error_with_op = oci.exceptions.ServiceError(
+        status=404, code="NotAuthorizedOrNotFound", headers={},
+        message="Authorization failed or requested resource not found.",
+        operation_name="list_vcns",
+    )
+    message = oracle_service._service_error_message(error_with_op)
+    assert "list_vcns" in message
+    assert "NotAuthorizedOrNotFound" in message
+    assert "Authorization failed" in message
+
+    error_without_op = oci.exceptions.ServiceError(
+        status=401, code="NotAuthenticated", headers={}, message="Bad credentials.",
+    )
+    message_no_op = oracle_service._service_error_message(error_without_op)
+    assert "NotAuthenticated" in message_no_op
+    assert "[" not in message_no_op
 
 
 def test_fire_and_forget_task_survives_garbage_collection():

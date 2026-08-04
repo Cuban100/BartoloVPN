@@ -167,7 +167,13 @@ async def _run_sync(fn, *args, **kwargs):
 
 
 def _service_error_message(e: "oci.exceptions.ServiceError") -> str:
-    return f"Oracle API error ({e.code}): {e.message}"
+    # operation_name pinpoints exactly which OCI call failed (list_vcns vs
+    # launch_instance vs get_availability_domains, etc.) - without it a
+    # NotAuthorizedOrNotFound only says "something was denied," with no
+    # way to tell whether that's a genuine permission gap or the wrong
+    # compartment/resource, forcing pure guesswork to diagnose.
+    op = f" [{e.operation_name}]" if getattr(e, "operation_name", None) else ""
+    return f"Oracle API error ({e.code}){op}: {e.message}"
 
 
 async def _ensure_network(config: dict, compartment_id: str) -> Tuple[str, str]:
