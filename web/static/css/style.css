@@ -464,6 +464,16 @@ body:has(.login-container) .footer,
     transition: border-color 0.2s ease;
 }
 
+/* Chrome doesn't inherit select's background/color into its open dropdown
+   popup, so a long <option>/<optgroup> list (e.g. Oracle region picker)
+   renders with the browser's default white background instead of the app
+   theme unless styled explicitly here. */
+.form-group select option,
+.form-group select optgroup {
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+}
+
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
