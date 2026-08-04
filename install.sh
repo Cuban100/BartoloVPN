@@ -22,6 +22,51 @@ echo "  2) A new region for an EXISTING BartoloVPN dashboard (lightweight agent 
 read -rp "Choice [1/2]: " SETUP_MODE
 echo
 
+# Asked once here, regardless of which path above - both a main dashboard
+# and a region can be running on an Oracle Cloud box, and both need the
+# same OCI-specific firewall handling (see apply_oracle_fixes below).
+read -rp "Is this an Oracle Cloud (OCI) VPS? [y/N]: " IS_ORACLE
+IS_ORACLE="${IS_ORACLE:-n}"
+export IS_ORACLE
+echo
+
+# Oracle's stock Ubuntu images ship their own iptables rules (persisted via
+# netfilter-persistent/iptables-persistent) that only allow SSH and REJECT
+# everything else, on top of whatever ufw does - inserting ACCEPT rules at
+# the very top of INPUT guarantees they're hit before any REJECT rule
+# further down, regardless of where it is. Call with every port that
+# should be reachable from the internet on this box.
+apply_oracle_fixes() {
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO="sudo"
+    else
+        SUDO=""
+    fi
+
+    echo "Oracle Cloud detected - adjusting the pre-installed iptables rules..."
+    if command -v iptables >/dev/null 2>&1; then
+        for port_proto in "$@"; do
+            port="${port_proto%%/*}"
+            proto="${port_proto##*/}"
+            $SUDO iptables -I INPUT 1 -p "$proto" --dport "$port" -j ACCEPT
+        done
+        if command -v netfilter-persistent >/dev/null 2>&1; then
+            $SUDO netfilter-persistent save >/dev/null 2>&1 || true
+        elif [ -d /etc/iptables ]; then
+            $SUDO sh -c 'iptables-save > /etc/iptables/rules.v4' 2>/dev/null || true
+        fi
+        echo "iptables rules updated and saved."
+    else
+        echo "WARNING: iptables not found - skipping (this image may not need it)."
+    fi
+
+    echo
+    echo "WARNING: Oracle Cloud has a SECOND firewall you must open in the console (this script cannot reach it):"
+    echo "  Networking -> Virtual Cloud Networks -> your VCN -> Security Lists -> Default Security List -> Add Ingress Rules"
+    echo "  for: $* (source 0.0.0.0/0)."
+    echo "  Nothing will be reachable from the internet until this is done, even though everything on the box itself is correctly configured."
+}
+
 if [ "$SETUP_MODE" = "2" ]; then
     REGION_SCRIPT="$SCRIPT_DIR/scripts/provision-region.sh"
     if [ ! -f "$REGION_SCRIPT" ]; then
@@ -29,7 +74,7 @@ if [ "$SETUP_MODE" = "2" ]; then
         exit 1
     fi
     echo "Handing off to scripts/provision-region.sh (needs root for package installs and firewall rules)..."
-    exec sudo "$REGION_SCRIPT" "$@"
+    exec sudo -E "$REGION_SCRIPT" "$@"
 fi
 
 detect_distro() {
@@ -171,4 +216,22 @@ fi
 
 echo "Using Python: $("$PYTHON_CMD" --version)"
 echo ""
-exec "$PYTHON_CMD" vpn-setup.py "$@"
+"$PYTHON_CMD" vpn-setup.py "$@"
+SETUP_EXIT=$?
+
+if [ "$SETUP_EXIT" -eq 0 ] && [[ "$IS_ORACLE" =~ ^[Yy] ]]; then
+    echo
+    # Read back the ports vpn-setup.py actually configured (interactively,
+    # during its own prompts) rather than assuming defaults - .env now
+    # exists since setup just succeeded.
+    api_port=$(grep -m1 '^API_PORT=' .env | cut -d= -f2)
+    wg_port=$(grep -m1 '^WIREGUARD_PORT=' .env | cut -d= -f2)
+    ovpn_port=$(grep -m1 '^OPENVPN_PORT=' .env | cut -d= -f2)
+    apply_oracle_fixes \
+        "${api_port:-5000}/tcp" \
+        "${wg_port:-51820}/udp" \
+        "${ovpn_port:-1194}/udp" \
+        "500/udp" "4500/udp"
+fi
+
+exit "$SETUP_EXIT"

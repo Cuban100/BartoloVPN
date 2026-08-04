@@ -47,8 +47,12 @@ fi
 log_step "This will turn this VPS into a new BartoloVPN WireGuard region."
 echo
 
-read -rp "Is this an Oracle Cloud (OCI) VPS? [y/N]: " IS_ORACLE
-IS_ORACLE="${IS_ORACLE:-n}"
+if [ -z "${IS_ORACLE:-}" ]; then
+    # Not already answered by install.sh (e.g. this script was run
+    # directly) - ask here instead.
+    read -rp "Is this an Oracle Cloud (OCI) VPS? [y/N]: " IS_ORACLE
+    IS_ORACLE="${IS_ORACLE:-n}"
+fi
 if [[ "$IS_ORACLE" =~ ^[Yy] ]]; then
     log_info "Oracle Cloud mode enabled - this run will also patch OCI's default iptables rules and remind you about the Security List firewall in the OCI console."
 else
