@@ -390,7 +390,7 @@ def test_provision_oracle_region_full_lifecycle_success(client, admin_headers, m
         async def fake_wait_for_public_ip(config, compartment_id, instance_id):
             return "203.0.113.42"
 
-        async def fake_wait_healthy(slug, agent_url, agent_key):
+        async def fake_wait_healthy(slug, agent_url, agent_key, on_attempt=None):
             return None
 
         class FakeComputeClient:
@@ -460,7 +460,7 @@ def test_provision_oracle_region_retries_next_ad_when_first_rejects_launch(clien
         async def fake_wait_for_public_ip(config, compartment_id, instance_id):
             return "203.0.113.77"
 
-        async def fake_wait_healthy(slug, agent_url, agent_key):
+        async def fake_wait_healthy(slug, agent_url, agent_key, on_attempt=None):
             return None
 
         attempted_ads = []
@@ -535,6 +535,124 @@ def test_health_check_rejects_region_with_no_agent_instead_of_clobbering_error(c
     region_data = next(r for r in get_resp.json() if r["slug"] == "or-noagent")
     assert region_data["health_status"] == "failed"
     assert "NotAuthenticated" in region_data["last_health_error"]
+
+
+def test_health_check_rejects_region_still_provisioning(client, admin_headers):
+    """Regression test: a manual Check while the background provisioning
+    task is still actively polling races it - both write health_status/
+    last_health_error on the same row with no coordination, so a manual
+    check could flip "provisioning" to "unreachable" moments before the
+    background task would have flipped it to "healthy" on its own,
+    making an actively-working provision look broken."""
+    async def make_region():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-still-provisioning",
+                display_name="Still Provisioning",
+                country_code="US",
+                is_local=False,
+                agent_url="https://198-51-100-9.sslip.io",
+                wireguard_endpoint_host="198.51.100.9",
+                is_active=False,
+                health_status="provisioning",
+                oracle_instance_id="ocid1.instance.oc1..stillprovisioning",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+            return region.id
+
+    region_id = asyncio.get_event_loop().run_until_complete(make_region())
+
+    resp = client.post(f"/regions/{region_id}/health-check", headers=admin_headers)
+    assert resp.status_code == 400
+    assert "actively checking" in resp.json()["detail"]
+
+    # Status must be untouched by the rejected manual check
+    get_resp = client.get("/regions", headers=admin_headers)
+    region_data = next(r for r in get_resp.json() if r["slug"] == "or-still-provisioning")
+    assert region_data["health_status"] == "provisioning"
+
+
+def test_health_check_reports_real_oracle_state_when_terminated(client, admin_headers, monkeypatch):
+    """Regression test for the actual real-world bug reported: a failed
+    HTTP ping to the agent alone can't distinguish "instance is fine,
+    agent is just slow/mid-build" from "the instance itself is actually
+    gone" - it just says "unreachable" either way, which is a guess, not
+    a real check. Oracle's own reported instance state is authoritative;
+    when it says the instance is gone, that must be what's reported."""
+    async def scenario():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-terminated-check",
+                display_name="Terminated Check",
+                country_code="US",
+                is_local=False,
+                agent_url="https://198-51-100-10.sslip.io",
+                agent_key_encrypted=region_service.encrypt_agent_key("fakekey"),
+                wireguard_endpoint_host="198.51.100.10",
+                is_active=True,
+                health_status="healthy",
+                oracle_instance_id="ocid1.instance.oc1..wasrunning",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+
+        await _fully_configure_oracle_settings()
+
+        async def fake_get_instance_state(settings_row, instance_id):
+            assert instance_id == "ocid1.instance.oc1..wasrunning"
+            return "TERMINATED"
+
+        monkeypatch.setattr(oracle_service, "get_instance_state", fake_get_instance_state)
+
+        updated = await region_service.health_check_region(region)
+        assert updated.health_status == "unreachable"
+        assert "TERMINATED" in updated.last_health_error
+
+    asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_health_check_notes_real_running_state_when_agent_unreachable(client, admin_headers, monkeypatch):
+    """When Oracle confirms RUNNING but the agent still isn't answering
+    (e.g. mid docker-compose-build), the error must say so - not just a
+    bare "unreachable" that reads identically to a genuinely dead VM."""
+    async def scenario():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-running-agent-down",
+                display_name="Running Agent Down",
+                country_code="US",
+                is_local=False,
+                agent_url="https://198-51-100-11.sslip.io",
+                agent_key_encrypted=region_service.encrypt_agent_key("fakekey"),
+                wireguard_endpoint_host="198.51.100.11",
+                is_active=True,
+                health_status="healthy",
+                oracle_instance_id="ocid1.instance.oc1..stillbuilding",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+
+        await _fully_configure_oracle_settings()
+
+        async def fake_get_instance_state(settings_row, instance_id):
+            return "RUNNING"
+
+        async def fake_client_health_fails(self):
+            raise Exception("Connection refused")
+
+        monkeypatch.setattr(oracle_service, "get_instance_state", fake_get_instance_state)
+        monkeypatch.setattr(region_service.RegionClient, "health", fake_client_health_fails)
+
+        updated = await region_service.health_check_region(region)
+        assert updated.health_status == "unreachable"
+        assert "RUNNING" in updated.last_health_error
+        assert "Connection refused" in updated.last_health_error
+
+    asyncio.get_event_loop().run_until_complete(scenario())
 
 
 def test_delete_region_terminates_oracle_instance(client, admin_headers, monkeypatch):
@@ -640,7 +758,7 @@ def test_provision_oracle_region_marks_failed_when_agent_never_comes_up(client, 
         async def fake_wait_for_public_ip(config, compartment_id, instance_id):
             return "198.51.100.2"
 
-        async def fake_wait_healthy_times_out(slug, agent_url, agent_key):
+        async def fake_wait_healthy_times_out(slug, agent_url, agent_key, on_attempt=None):
             raise OracleProvisioningError("Agent never came up within 15 minutes - last error: connection refused")
 
         class FakeComputeClient:

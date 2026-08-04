@@ -2965,6 +2965,23 @@ async def check_region_health(region_id: int, current_user: dict = Depends(get_c
                    f"was created. See its current health_status/last_health_error instead of checking manually."
         )
 
+    if region.health_status == "provisioning":
+        # A background task (oracle_service.provision_oracle_region) owns
+        # this row's health_status/last_health_error while it's actively
+        # provisioning - a manual check here writes to the exact same
+        # fields with no coordination, and can race the background task
+        # (e.g. flip to "unreachable" moments before the background task
+        # would have flipped it to "healthy"), making an actively-working
+        # provision look broken. Reject instead of racing it - the agent
+        # genuinely isn't expected to be reliably reachable yet anyway
+        # during this window (Docker install, image build, TLS cert).
+        raise HTTPException(
+            status_code=400,
+            detail=f"Region '{region.slug}' is still provisioning - a background task is actively checking it "
+                   f"already (see last_health_error for the latest attempt). Manual checks are disabled until "
+                   f"it finishes, to avoid the two racing and overwriting each other's result."
+        )
+
     updated = await region_service.health_check_region(region)
     return _region_out(updated)
 

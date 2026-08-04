@@ -16,7 +16,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 
 from config import settings  # type: ignore  # Pylance: namespace collision with config dir
-from database import AsyncSessionLocal, Region
+from database import AsyncSessionLocal, Region, SystemSettings
 from region_client import RegionClient
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,33 @@ async def health_check_region(region: Region) -> Region:
             await session.refresh(db_region)
             return db_region
 
+        # For Oracle-provisioned regions, check the real instance state
+        # directly with Oracle first - a failed HTTP ping to the agent
+        # alone is only ever a guess (a real production incident: showed
+        # a generic "unreachable" for an instance that was genuinely
+        # RUNNING and just mid-build, indistinguishable from one Oracle
+        # had actually terminated). If Oracle itself says the instance is
+        # gone, report that definitively instead of pinging a dead agent;
+        # if it says RUNNING, fold that into the message either way so
+        # "unreachable" never looks like it could mean the VM is down
+        # when Oracle confirms it's up.
+        oracle_instance_state = None
+        if db_region.oracle_instance_id:
+            try:
+                import oracle_service  # local import - oracle_service imports this module
+                settings_row = await session.get(SystemSettings, 1)
+                oracle_instance_state = await oracle_service.get_instance_state(settings_row, db_region.oracle_instance_id)
+            except Exception as e:
+                logger.warning(f"Region {db_region.slug}: could not check real Oracle instance state: {e}")
+
+        if oracle_instance_state is not None and oracle_instance_state not in ("RUNNING", "PROVISIONING", "STARTING"):
+            db_region.health_status = "unreachable"
+            db_region.last_health_error = f"Oracle reports this instance is {oracle_instance_state} (not running)"
+            db_region.last_health_check = datetime.utcnow()
+            await session.commit()
+            await session.refresh(db_region)
+            return db_region
+
         try:
             client = build_region_client(db_region)
             health = await client.health()
@@ -97,9 +124,10 @@ async def health_check_region(region: Region) -> Region:
             db_region.last_health_error = None
         except Exception as e:
             db_region.health_status = "unreachable"
+            state_note = f"instance is {oracle_instance_state} in Oracle, but " if oracle_instance_state else ""
             # Message only - never the agent key, which errors from
             # RegionClient/build_region_client never include anyway.
-            db_region.last_health_error = str(e)[:500]
+            db_region.last_health_error = f"{state_note}agent not responding: {str(e)[:400]}"
             logger.warning(f"Region {db_region.slug} health check failed: {e}")
         finally:
             db_region.last_health_check = datetime.utcnow()

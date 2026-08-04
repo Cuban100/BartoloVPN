@@ -375,6 +375,23 @@ async def _pick_ubuntu_image(config: dict, compartment_id: str) -> str:
     return images[0].id
 
 
+async def get_instance_state(settings_row: SystemSettings, instance_id: str) -> str:
+    """Returns the real, authoritative lifecycle_state directly from
+    Oracle (RUNNING, STOPPED, TERMINATED, etc.) - a failed HTTP ping to
+    the region-agent alone is only ever a guess (a real production
+    incident: showed "unreachable" for an instance that was actually
+    RUNNING and mid-build, indistinguishable from one Oracle had
+    silently terminated). Used by region_service.health_check_region to
+    check the real VM state before/alongside the agent HTTP check."""
+    config = build_oci_config(settings_row)
+    compute = oci.core.ComputeClient(config)
+    try:
+        response = await _run_sync(compute.get_instance, instance_id)
+        return response.data.lifecycle_state
+    except oci.exceptions.ServiceError as e:
+        raise OracleProvisioningError(_service_error_message(e))
+
+
 async def terminate_instance(settings_row: SystemSettings, instance_id: str) -> None:
     """Best-effort - called from DELETE /regions when the row being
     removed was Oracle-provisioned (region.oracle_instance_id set), so the
@@ -411,11 +428,18 @@ async def _wait_for_public_ip(config: dict, compartment_id: str, instance_id: st
     )
 
 
-async def _wait_for_agent_healthy(slug: str, agent_url: str, agent_key: str) -> None:
+async def _wait_for_agent_healthy(slug: str, agent_url: str, agent_key: str, on_attempt=None) -> None:
     """Polls the freshly-booted agent's /health until it responds - this
     is expected to take several minutes (Docker install, git clone, image
     build, first Let's Encrypt cert), so connection failures during that
-    window are normal, not fatal, right up until the timeout."""
+    window are normal, not fatal, right up until the timeout.
+
+    on_attempt, if given, is awaited with the latest error after each
+    failed poll - a real operator confusion this fixes: last_health_check
+    in the DB used to only update on final success/failure, so it sat
+    frozen for the entire ~15 minute wait even though this loop was
+    genuinely polling every POLL_INTERVAL_SECONDS the whole time,
+    making an actively-working background task look stuck from outside."""
     client = RegionClient(slug, agent_url, agent_key, timeout_seconds=10.0)
     deadline = asyncio.get_event_loop().time() + AGENT_HEALTHY_TIMEOUT_SECONDS
     last_error = "unknown error"
@@ -425,6 +449,8 @@ async def _wait_for_agent_healthy(slug: str, agent_url: str, agent_key: str) -> 
             return
         except Exception as e:
             last_error = str(e)
+            if on_attempt is not None:
+                await on_attempt(last_error)
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
     raise OracleProvisioningError(
         f"Agent never came up within {AGENT_HEALTHY_TIMEOUT_SECONDS // 60} minutes - "
@@ -551,7 +577,14 @@ async def provision_oracle_region(
             agent_key_encrypted=region_service.encrypt_agent_key(agent_api_key),
         )
 
-        await _wait_for_agent_healthy(slug, agent_url, agent_api_key)
+        async def _record_poll_attempt(error: str) -> None:
+            # Doesn't touch health_status (stays "provisioning") - only
+            # proves the background task is genuinely still alive and
+            # polling, for a real operator confused by an apparently-
+            # frozen last_health_check during the several-minute wait.
+            await _set_fields(last_health_error=f"Still waiting for the agent - last attempt: {error}")
+
+        await _wait_for_agent_healthy(slug, agent_url, agent_api_key, on_attempt=_record_poll_attempt)
         await _set_fields(health_status="healthy", is_active=True, last_health_error=None)
         logger.info(f"Oracle region '{slug}' finished provisioning and is now active")
 

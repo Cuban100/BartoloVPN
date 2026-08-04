@@ -1760,12 +1760,21 @@ async function loadRegionsAdminTable() {
                 : r.health_status === 'provisioning' ? 'status-provisioning'
                 : 'status-inactive';
             const lastChecked = r.last_health_check ? new Date(r.last_health_check + 'Z').toLocaleString() : 'Never';
+            // Disabled while provisioning - a background task already owns
+            // this row's health status during that window (see POST
+            // /regions/{id}/health-check's matching guard); a manual check
+            // here would just race it and can overwrite its result.
+            const checkButton = r.health_status === 'provisioning'
+                ? `<button class="btn btn-sm btn-secondary" disabled title="Still provisioning - a background task is already checking this">
+                        <i class="fas fa-heartbeat"></i> Check
+                   </button>`
+                : `<button class="btn btn-sm btn-secondary" onclick="testRegionHealth(${r.id})">
+                        <i class="fas fa-heartbeat"></i> Check
+                   </button>`;
             const actions = r.is_local
                 ? '<span class="form-help">Local server - not editable</span>'
                 : `
-                    <button class="btn btn-sm btn-secondary" onclick="testRegionHealth(${r.id})">
-                        <i class="fas fa-heartbeat"></i> Check
-                    </button>
+                    ${checkButton}
                     <button class="btn btn-sm btn-danger" onclick="deleteRegion(${r.id}, '${escapeHtml(r.slug)}')">
                         <i class="fas fa-trash"></i> Delete
                     </button>
