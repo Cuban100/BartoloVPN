@@ -406,24 +406,42 @@ async def provision_oracle_region(
             metadata["ssh_authorized_keys"] = ssh_public_key
 
         compute = oci.core.ComputeClient(config)
-        launch_response = await _run_sync(
-            compute.launch_instance,
-            oci.core.models.LaunchInstanceDetails(
-                compartment_id=compartment_id,
-                availability_domain=availability_domain,
-                shape=ORACLE_SHAPE,
-                display_name=display_name,
-                source_details=oci.core.models.InstanceSourceViaImageDetails(
-                    source_type="image",
-                    image_id=image_id,
-                ),
-                create_vnic_details=oci.core.models.CreateVnicDetails(
-                    subnet_id=subnet_id,
-                    assign_public_ip=True,
-                ),
-                metadata=metadata,
-            ),
+        logger.info(
+            f"Oracle region '{slug}': launching instance with "
+            f"compartment_id={compartment_id} availability_domain={availability_domain!r} "
+            f"shape={ORACLE_SHAPE} image_id={image_id} subnet_id={subnet_id}"
         )
+        try:
+            launch_response = await _run_sync(
+                compute.launch_instance,
+                oci.core.models.LaunchInstanceDetails(
+                    compartment_id=compartment_id,
+                    availability_domain=availability_domain,
+                    shape=ORACLE_SHAPE,
+                    display_name=display_name,
+                    source_details=oci.core.models.InstanceSourceViaImageDetails(
+                        source_type="image",
+                        image_id=image_id,
+                    ),
+                    create_vnic_details=oci.core.models.CreateVnicDetails(
+                        subnet_id=subnet_id,
+                        assign_public_ip=True,
+                    ),
+                    metadata=metadata,
+                ),
+            )
+        except oci.exceptions.ServiceError as e:
+            # A NotAuthorizedOrNotFound here is genuinely ambiguous
+            # between "no permission" and "one of these IDs doesn't
+            # exist/isn't valid" - surfacing the exact values used (not
+            # secret - AD names, image/subnet OCIDs, shape) directly in
+            # the stored error means the operator doesn't have to fetch
+            # container logs separately to compare against a manual
+            # Console launch that used different values and worked.
+            raise OracleProvisioningError(
+                f"{_service_error_message(e)} (used: availability_domain={availability_domain!r}, "
+                f"shape={ORACLE_SHAPE}, image_id={image_id}, subnet_id={subnet_id})"
+            )
         instance_id = launch_response.data.id
 
         public_ip = await _wait_for_public_ip(config, compartment_id, instance_id)

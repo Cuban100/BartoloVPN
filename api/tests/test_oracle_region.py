@@ -516,3 +516,70 @@ def test_provision_oracle_region_marks_failed_on_launch_error(client, admin_head
             assert updated.oracle_instance_id is None
 
     asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_provision_oracle_region_launch_instance_error_includes_diagnostic_params(client, admin_headers, monkeypatch):
+    """Regression test: a NotAuthorizedOrNotFound from launch_instance
+    specifically is genuinely ambiguous between "no permission" and "one
+    of these IDs doesn't exist" - this bit a real production attempt
+    where the operator had full tenancy admin (confirmed via the actual
+    OCI policy statement) yet launch_instance still failed. Without the
+    exact AD/image/subnet values used, diagnosing that requires guessing
+    or fetching container logs separately; they must be in the stored
+    error itself."""
+    async def scenario():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-lifecycle-launcherror",
+                display_name="Lifecycle Launch Error",
+                country_code="US",
+                is_local=False,
+                wireguard_endpoint_host="",
+                is_active=False,
+                health_status="provisioning",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+            region_id = region.id
+
+        await _fully_configure_oracle_settings()
+        async with AsyncSessionLocal() as session:
+            settings_row = await session.get(SystemSettings, 1)
+
+        async def fake_ensure_network(config, compartment_id):
+            return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..diagnostictest"
+
+        async def fake_pick_ad(config, compartment_id):
+            return "fake-AD-2"
+
+        async def fake_pick_image(config, compartment_id):
+            return "ocid1.image.oc1..diagnostictest"
+
+        class FakeComputeClientLaunchFails:
+            def __init__(self, config):
+                pass
+
+            def launch_instance(self, details):
+                raise oci.exceptions.ServiceError(
+                    status=404, code="NotAuthorizedOrNotFound", headers={},
+                    message="Authorization failed or requested resource not found.",
+                    operation_name="launch_instance",
+                )
+
+        monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
+        monkeypatch.setattr(oracle_service, "_pick_availability_domain", fake_pick_ad)
+        monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
+        monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClientLaunchFails)
+
+        await oracle_service.provision_oracle_region(region_id, "or-lifecycle-launcherror", "Lifecycle Launch Error", 51820, settings_row)
+
+        async with AsyncSessionLocal() as session:
+            updated = await session.get(Region, region_id)
+            assert updated.health_status == "failed"
+            assert "launch_instance" in updated.last_health_error
+            assert "fake-AD-2" in updated.last_health_error
+            assert "ocid1.image.oc1..diagnostictest" in updated.last_health_error
+            assert "ocid1.subnet.oc1..diagnostictest" in updated.last_health_error
+
+    asyncio.get_event_loop().run_until_complete(scenario())
