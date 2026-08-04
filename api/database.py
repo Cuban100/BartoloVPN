@@ -156,10 +156,15 @@ class Region(Base):
     wireguard_endpoint_port = Column(Integer, default=51820)
 
     is_active = Column(Boolean, default=True)
-    health_status = Column(String(20), default="unknown")  # unknown, healthy, unreachable
+    health_status = Column(String(20), default="unknown")  # unknown, healthy, unreachable, provisioning, failed
     last_health_check = Column(DateTime, nullable=True)
     last_health_error = Column(Text, nullable=True)
     peer_count = Column(Integer, default=0)
+
+    # Only set for regions created via POST /regions/oracle - lets a future
+    # "delete region" also terminate the VM instead of leaving it orphaned,
+    # and distinguishes dashboard-provisioned regions from manually-added ones.
+    oracle_instance_id = Column(String(255), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 

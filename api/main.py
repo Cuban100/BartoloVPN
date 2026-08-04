@@ -175,6 +175,8 @@ from dns_activity import dns_activity_poller, _demux_docker_log_stream
 import region_service
 from region_service import region_health_poller
 from region_client import RegionClient
+import oracle_service
+from oracle_service import OracleProvisioningError
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -2722,6 +2724,7 @@ def _region_out(region: Region) -> dict:
         "last_health_check": region.last_health_check.isoformat() if region.last_health_check else None,
         "last_health_error": region.last_health_error,
         "peer_count": region.peer_count,
+        "oracle_instance_id": region.oracle_instance_id,
     }
 
 class RegionCreate(BaseModel):
@@ -2790,6 +2793,69 @@ async def create_region(region: RegionCreate, current_user: dict = Depends(get_c
         await session.refresh(new_region)
         return _region_out(new_region)
 
+class OracleRegionCreate(BaseModel):
+    slug: str = Field(..., min_length=2, max_length=30, pattern=r"^[a-z0-9-]+$")
+    display_name: str = Field(..., min_length=2, max_length=100)
+    country_code: str = Field(..., min_length=2, max_length=2)
+    city: Optional[str] = None
+    wireguard_port: int = 51820
+
+@app.post("/regions/oracle")
+async def create_oracle_region(region: OracleRegionCreate, current_user: dict = Depends(get_current_user)):
+    """Creates a real Oracle Compute instance via the OCI API using the
+    credentials stored in Settings, boots it into a working BartoloVPN
+    region with zero manual SSH, and returns as soon as the instance has
+    a public IP - the agent still needs several more minutes to finish
+    booting (Docker install, image build, TLS cert), tracked via
+    health_status="provisioning" until a background task
+    (oracle_service.finish_provisioning) confirms it's healthy or records
+    why it failed. See oracle_service.py's module docstring for the
+    architecture and its verification caveat."""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    existing = await region_service.get_region_by_slug(region.slug)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"A region with slug '{region.slug}' already exists")
+
+    async with AsyncSessionLocal() as session:
+        settings_row = await session.get(SystemSettings, 1)
+        if settings_row is None or not settings_row.oracle_enabled:
+            raise HTTPException(status_code=400, detail="Oracle Cloud Services isn't enabled in Settings")
+
+    try:
+        instance_id, public_ip, agent_api_key = await oracle_service.launch_oracle_instance(
+            settings_row, region.display_name, region.wireguard_port
+        )
+    except OracleProvisioningError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    agent_url = f"https://{public_ip.replace('.', '-')}.sslip.io"
+
+    async with AsyncSessionLocal() as session:
+        new_region = Region(
+            slug=region.slug,
+            display_name=region.display_name,
+            country_code=region.country_code.upper(),
+            city=region.city,
+            is_local=False,
+            agent_url=agent_url,
+            agent_key_encrypted=region_service.encrypt_agent_key(agent_api_key),
+            wireguard_endpoint_host=public_ip,
+            wireguard_endpoint_port=region.wireguard_port,
+            is_active=False,
+            health_status="provisioning",
+            oracle_instance_id=instance_id,
+        )
+        session.add(new_region)
+        await session.commit()
+        await session.refresh(new_region)
+        region_id = new_region.id
+        result = _region_out(new_region)
+
+    asyncio.create_task(oracle_service.finish_provisioning(region_id, region.slug, agent_url, agent_api_key))
+    return result
+
 @app.put("/regions/{region_id}")
 async def update_region(region_id: int, update: RegionUpdate, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "admin":
@@ -2831,9 +2897,23 @@ async def delete_region(region_id: int, force: bool = False, current_user: dict 
                 status_code=409,
                 detail=f"Region {region.slug} still has {region.peer_count} peer(s) - pass ?force=true to delete anyway (their configs on the remote agent are not affected)"
             )
+
+        instance_id = region.oracle_instance_id
+        slug = region.slug
         await session.delete(region)
         await session.commit()
-        return {"message": f"Region {region.slug} deleted"}
+
+    termination_note = ""
+    if instance_id:
+        try:
+            async with AsyncSessionLocal() as settings_session:
+                oracle_settings = await settings_session.get(SystemSettings, 1)
+            await oracle_service.terminate_instance(oracle_settings, instance_id)
+        except OracleProvisioningError as e:
+            logger.warning(f"Region {slug} deleted, but terminating its Oracle instance failed: {e}")
+            termination_note = f" (warning: could not terminate the Oracle instance - {e}. Terminate it manually via the OCI Console.)"
+
+    return {"message": f"Region {slug} deleted{termination_note}"}
 
 @app.post("/regions/{region_id}/health-check")
 async def check_region_health(region_id: int, current_user: dict = Depends(get_current_user)):

@@ -925,6 +925,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initThemeToggle();
     setupCustomSelect('oracle-region');
     setupCustomSelect('region-country-code');
+    setupCustomSelect('oracle-add-region-country-code');
     initRegionCountryAutofill();
 
     // Initialize DOM elements
@@ -1013,6 +1014,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (addRegionForm) {
         addRegionForm.addEventListener('submit', handleAddRegion);
         console.log('Add region form listener added');
+    }
+
+    // Add via Oracle form listener
+    const addOracleRegionForm = document.getElementById('add-oracle-region-form');
+    if (addOracleRegionForm) {
+        addOracleRegionForm.addEventListener('submit', handleAddOracleRegion);
     }
     
     // Edit peer form listener
@@ -1577,17 +1584,17 @@ function showAddRegionModal() {
 // Suggests Display Name/Slug from the picked country so the operator isn't
 // typing both a name and a code by hand - only fills fields that are still
 // empty, so it never clobbers something already typed.
-function initRegionCountryAutofill() {
-    const countrySelect = document.getElementById('region-country-code');
+function wireCountryAutofill(countrySelectId, displayNameId, cityId, slugId) {
+    const countrySelect = document.getElementById(countrySelectId);
     if (!countrySelect) return;
     countrySelect.addEventListener('change', () => {
         const countryName = countrySelect.selectedOptions[0]?.textContent || '';
         const countryCode = countrySelect.value;
         if (!countryCode) return;
 
-        const displayNameEl = document.getElementById('region-display-name');
-        const cityEl = document.getElementById('region-city');
-        const slugEl = document.getElementById('region-slug');
+        const displayNameEl = document.getElementById(displayNameId);
+        const cityEl = document.getElementById(cityId);
+        const slugEl = document.getElementById(slugId);
 
         if (displayNameEl && !displayNameEl.value) {
             const city = cityEl ? cityEl.value.trim() : '';
@@ -1597,6 +1604,14 @@ function initRegionCountryAutofill() {
             slugEl.value = countryCode.toLowerCase();
         }
     });
+}
+
+function initRegionCountryAutofill() {
+    wireCountryAutofill('region-country-code', 'region-display-name', 'region-city', 'region-slug');
+    wireCountryAutofill(
+        'oracle-add-region-country-code', 'oracle-add-region-display-name',
+        'oracle-add-region-city', 'oracle-add-region-slug'
+    );
 }
 
 function closeAddRegionModal() {
@@ -1639,6 +1654,86 @@ async function handleAddRegion(event) {
     }
 }
 
+function showAddOracleRegionModal() {
+    const modal = document.getElementById('add-oracle-region-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        const form = document.getElementById('add-oracle-region-form');
+        if (form) form.reset();
+        syncCustomSelectLabel('oracle-add-region-country-code');
+    }
+}
+
+function closeAddOracleRegionModal() {
+    const modal = document.getElementById('add-oracle-region-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleAddOracleRegion(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const regionData = {
+        slug: formData.get('oracle-add-region-slug'),
+        display_name: formData.get('oracle-add-region-display-name'),
+        country_code: formData.get('oracle-add-region-country-code'),
+        city: formData.get('oracle-add-region-city') || null,
+        wireguard_port: parseInt(formData.get('oracle-add-region-wg-port'), 10) || 51820
+    };
+
+    const submitBtn = document.getElementById('add-oracle-region-submit');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const response = await apiFetch('/regions/oracle', {
+            method: 'POST',
+            body: JSON.stringify(regionData)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showToast(`Creating "${data.display_name}" on Oracle Cloud - this takes several minutes`, 'success');
+            closeAddOracleRegionModal();
+            event.target.reset();
+            loadRegionsAdminTable();
+            loadRegions();
+            startProvisioningPoll();
+        } else {
+            showToast(data.detail || 'Failed to create Oracle region', 'error');
+        }
+    } catch (error) {
+        console.error('Error creating Oracle region:', error);
+        showToast('Error creating Oracle region', 'error');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+// Polls the regions table while any region is still "provisioning" -
+// creating an Oracle instance takes several minutes (Docker install,
+// image build, first TLS cert), so the operator needs the table to
+// update itself rather than requiring a manual refresh. Stops itself
+// once nothing is left provisioning.
+let provisioningPollTimer = null;
+
+function startProvisioningPoll() {
+    if (provisioningPollTimer) return;
+    provisioningPollTimer = setInterval(async () => {
+        try {
+            const response = await apiFetch('/regions');
+            if (!response.ok) return;
+            const regions = await response.json();
+            const stillProvisioning = regions.some(r => r.health_status === 'provisioning');
+            loadRegionsAdminTable();
+            loadRegions();
+            if (!stillProvisioning) {
+                clearInterval(provisioningPollTimer);
+                provisioningPollTimer = null;
+            }
+        } catch (error) {
+            console.error('Error polling region provisioning status:', error);
+        }
+    }, 15000);
+}
+
 async function loadRegionsAdminTable() {
     const tableBody = document.getElementById('regions-table');
     if (!tableBody) return;
@@ -1655,7 +1750,9 @@ async function loadRegionsAdminTable() {
         }
         tableBody.innerHTML = regions.map(r => {
             const location = r.city ? `${r.display_name} (${r.city}, ${r.country_code})` : `${r.display_name} (${r.country_code})`;
-            const healthClass = r.health_status === 'healthy' ? 'status-active' : 'status-inactive';
+            const healthClass = r.health_status === 'healthy' ? 'status-active'
+                : r.health_status === 'provisioning' ? 'status-provisioning'
+                : 'status-inactive';
             const lastChecked = r.last_health_check ? new Date(r.last_health_check + 'Z').toLocaleString() : 'Never';
             const actions = r.is_local
                 ? '<span class="form-help">Local server - not editable</span>'
@@ -1678,6 +1775,7 @@ async function loadRegionsAdminTable() {
                 </tr>
             `;
         }).join('');
+        if (regions.some(r => r.health_status === 'provisioning')) startProvisioningPoll();
     } catch (error) {
         console.error('Error loading regions table:', error);
         tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading regions</td></tr>';
@@ -2920,6 +3018,8 @@ window.downloadPeerConfig = downloadPeerConfig;
 window.deletePeer = deletePeer;
 window.showAddRegionModal = showAddRegionModal;
 window.closeAddRegionModal = closeAddRegionModal;
+window.showAddOracleRegionModal = showAddOracleRegionModal;
+window.closeAddOracleRegionModal = closeAddOracleRegionModal;
 window.testRegionHealth = testRegionHealth;
 window.deleteRegion = deleteRegion;
 window.showAddUserModal = showAddUserModal;

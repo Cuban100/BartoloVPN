@@ -1535,6 +1535,11 @@ body:has(.login-container) .footer,
     color: #991b1b;
 }
 
+.status-badge.status-provisioning {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
 .role-badge.role-admin {
     background-color: #fbbf24;
     color: #92400e;

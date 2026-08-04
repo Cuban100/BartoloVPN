@@ -8,6 +8,9 @@
     <div class="section-header">
         <h3>Server Locations</h3>
         <div class="section-actions">
+            <button class="btn btn-secondary" onclick="showAddOracleRegionModal()">
+                <i class="fas fa-cloud"></i> Add via Oracle
+            </button>
             <button class="btn btn-primary" onclick="showAddRegionModal()">
                 <i class="fas fa-plus"></i> Add Region
             </button>
@@ -135,6 +138,103 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeAddRegionModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Add Region</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add via Oracle Modal - no Agent URL/Key/Host fields, since those get
+     generated automatically (a real Oracle Compute instance, DNS via
+     sslip.io, and a fresh agent key) instead of being copy-pasted from
+     scripts/provision-region.sh's terminal output. Requires Oracle Cloud
+     Services to be configured in Settings first. -->
+<div id="add-oracle-region-modal" class="modal-overlay" style="display: none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Add Region via Oracle</h3>
+            <button class="modal-close" onclick="closeAddOracleRegionModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="form-help">Creates a real Oracle Compute instance via the API using the credentials stored in Settings, and boots it into a working region automatically - no SSH required. This takes several minutes; the new row will show "Provisioning..." until it's ready.</p>
+            <form id="add-oracle-region-form">
+                <div class="form-group">
+                    <label for="oracle-add-region-slug">Slug</label>
+                    <input type="text" id="oracle-add-region-slug" name="oracle-add-region-slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="e.g. de-fra1">
+                    <small class="form-help">Lowercase letters, numbers, and hyphens only - used internally to identify this region</small>
+                </div>
+                <div class="form-group">
+                    <label for="oracle-add-region-display-name">Display Name</label>
+                    <input type="text" id="oracle-add-region-display-name" name="oracle-add-region-display-name" required placeholder="e.g. Germany - Frankfurt">
+                </div>
+                <div class="form-group">
+                    <label for="oracle-add-region-country-code-trigger">Country</label>
+                    <div class="custom-dropdown" id="oracle-add-region-country-code-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="oracle-add-region-country-code-trigger">
+                            <span id="oracle-add-region-country-code-trigger-label">Select a country...</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="oracle-add-region-country-code-panel" hidden></div>
+                    </div>
+                    <select id="oracle-add-region-country-code" name="oracle-add-region-country-code" required style="display: none;">
+                        <option value="">Select a country...</option>
+                        <optgroup label="Americas">
+                            <option value="US">United States</option>
+                            <option value="CA">Canada</option>
+                            <option value="MX">Mexico</option>
+                            <option value="BR">Brazil</option>
+                            <option value="CL">Chile</option>
+                            <option value="CO">Colombia</option>
+                            <option value="AR">Argentina</option>
+                        </optgroup>
+                        <optgroup label="Europe">
+                            <option value="GB">United Kingdom</option>
+                            <option value="DE">Germany</option>
+                            <option value="FR">France</option>
+                            <option value="NL">Netherlands</option>
+                            <option value="ES">Spain</option>
+                            <option value="IT">Italy</option>
+                            <option value="CH">Switzerland</option>
+                            <option value="SE">Sweden</option>
+                            <option value="PL">Poland</option>
+                            <option value="IE">Ireland</option>
+                            <option value="PT">Portugal</option>
+                            <option value="RO">Romania</option>
+                        </optgroup>
+                        <optgroup label="Middle East / Africa">
+                            <option value="AE">United Arab Emirates</option>
+                            <option value="SA">Saudi Arabia</option>
+                            <option value="IL">Israel</option>
+                            <option value="ZA">South Africa</option>
+                            <option value="EG">Egypt</option>
+                            <option value="TR">Turkey</option>
+                        </optgroup>
+                        <optgroup label="Asia Pacific">
+                            <option value="JP">Japan</option>
+                            <option value="KR">South Korea</option>
+                            <option value="SG">Singapore</option>
+                            <option value="IN">India</option>
+                            <option value="ID">Indonesia</option>
+                            <option value="AU">Australia</option>
+                            <option value="HK">Hong Kong</option>
+                            <option value="TW">Taiwan</option>
+                        </optgroup>
+                    </select>
+                    <small class="form-help">This is where the peer picker will show this region as being located - independent of your Oracle tenancy's Home Region in Settings.</small>
+                </div>
+                <div class="form-group">
+                    <label for="oracle-add-region-city">City (optional)</label>
+                    <input type="text" id="oracle-add-region-city" name="oracle-add-region-city" placeholder="e.g. Frankfurt">
+                </div>
+                <div class="form-group">
+                    <label for="oracle-add-region-wg-port">WireGuard Endpoint Port</label>
+                    <input type="number" id="oracle-add-region-wg-port" name="oracle-add-region-wg-port" value="51820">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddOracleRegionModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="add-oracle-region-submit">
+                        <i class="fas fa-cloud"></i> Create on Oracle
+                    </button>
                 </div>
             </form>
         </div>
