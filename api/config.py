@@ -17,6 +17,7 @@ _PLACEHOLDER_SECRETS = {
     "web_password": "your-secure-password-change-this",
     "ikev2_psk": "your-ikev2-pre-shared-key-change-this",
     "ikev2_password": "vpnpass-change-this",
+    "region_agent_encryption_key": "your-region-agent-encryption-key-change-this",
 }
 
 class Settings(BaseSettings):
@@ -71,6 +72,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field(...)
     jwt_expire_minutes: int = Field(...)
 
+    # Encrypts agent API keys for remote regions at rest (Fernet, see
+    # region_service.py). Kept separate from jwt_secret_key on purpose -
+    # rotating the JWT secret shouldn't break decrypting stored agent keys.
+    region_agent_encryption_key: str = Field(...)
+
     # Set to true once the app is only reachable over HTTPS (e.g. behind
     # Cloudflare Tunnel or a TLS-terminating reverse proxy). Browsers refuse
     # to send secure cookies over plain HTTP, so flipping this on for a
@@ -113,7 +119,7 @@ class Settings(BaseSettings):
             raise ValueError("OpenVPN protocol must be 'udp' or 'tcp'")
         return v
 
-    @field_validator('jwt_secret_key', 'web_password', 'ikev2_psk', 'ikev2_password')
+    @field_validator('jwt_secret_key', 'web_password', 'ikev2_psk', 'ikev2_password', 'region_agent_encryption_key')
     @classmethod
     def reject_placeholder_secrets(cls, v, info):
         placeholder = _PLACEHOLDER_SECRETS.get(info.field_name)
@@ -124,7 +130,7 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator('web_password', 'jwt_secret_key')
+    @field_validator('web_password', 'jwt_secret_key', 'region_agent_encryption_key')
     @classmethod
     def warn_on_weak_secret(cls, v, info):
         min_len = 12 if info.field_name == "web_password" else 32

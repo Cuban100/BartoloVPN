@@ -112,13 +112,56 @@ class DnsQueryLog(Base):
 class IPRotation(Base):
     """IP rotation configuration"""
     __tablename__ = "ip_rotations"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     endpoint_id = Column(Integer, ForeignKey("server_endpoints.id"), nullable=False)
     rotation_interval = Column(Integer, default=3600)  # seconds
     last_rotation = Column(DateTime, nullable=True)
     next_rotation = Column(DateTime, nullable=True)
     is_enabled = Column(Boolean, default=True)
+
+class Region(Base):
+    """A real WireGuard server location a peer can connect through.
+
+    Deliberately separate from ServerEndpoint/IPRotation above: those model
+    "rotate this one endpoint's IP for evasion" (their own IP-rotation
+    logic is an admitted placeholder, api/ip_rotation.py) and aren't wired
+    into peer creation at all today. Region models "one of N real,
+    permanently-distinct servers a user picks to exit from" - a different
+    concept, and conflating the two tables would make both harder to
+    reason about.
+    """
+    __tablename__ = "regions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(30), unique=True, nullable=False, index=True)  # "local", "de-fra1"
+    display_name = Column(String(100), nullable=False)  # "Germany - Frankfurt"
+    country_code = Column(String(2), nullable=False)
+    city = Column(String(100), nullable=True)
+
+    # True only for the single seeded row representing this box's own
+    # local WireGuard server - peer routes branch on this instead of
+    # calling out to an agent, since the local server is managed in-process
+    # (see VPNManager in main.py) and was working before this feature existed.
+    is_local = Column(Boolean, default=False)
+
+    # Null for the local region. For remote regions, agent_url points at
+    # the region agent's HTTPS endpoint and agent_key_encrypted holds its
+    # API key, Fernet-encrypted at rest (see region_service.py) - never
+    # stored or logged in plaintext.
+    agent_url = Column(String(255), nullable=True)
+    agent_key_encrypted = Column(Text, nullable=True)
+
+    wireguard_endpoint_host = Column(String(255), nullable=False)
+    wireguard_endpoint_port = Column(Integer, default=51820)
+
+    is_active = Column(Boolean, default=True)
+    health_status = Column(String(20), default="unknown")  # unknown, healthy, unreachable
+    last_health_check = Column(DateTime, nullable=True)
+    last_health_error = Column(Text, nullable=True)
+    peer_count = Column(Integer, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # Import configuration
 from config import settings
@@ -226,6 +269,30 @@ async def create_default_endpoints():
             
             for endpoint in default_endpoints:
                 session.add(endpoint)
-            
+
             await session.commit()
             print("Created default server endpoints")
+
+async def create_default_region():
+    """Register this box's own local WireGuard server as the 'local'
+    Region, if it doesn't already exist. Peer routes treat is_local=True
+    as the signal to keep using the existing in-process VPNManager code
+    path instead of dispatching to a region agent."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Region).where(Region.is_local == True))
+        local_region = result.scalar_one_or_none()
+        if not local_region:
+            session.add(Region(
+                slug="local",
+                display_name="Local (this server)",
+                country_code="US",
+                is_local=True,
+                agent_url=None,
+                agent_key_encrypted=None,
+                wireguard_endpoint_host=settings.server_ip,
+                wireguard_endpoint_port=settings.wireguard_port,
+                is_active=True,
+                health_status="healthy",
+            ))
+            await session.commit()
+            print("Created default local region")

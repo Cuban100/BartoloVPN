@@ -1,0 +1,12 @@
+# AGENT_HOSTNAME is substituted from the environment (.env, via
+# docker-compose's env_file on the caddy service) - Caddy supports
+# {$ENV_VAR} natively in Caddyfiles, no templating step needed.
+#
+# Proxies to 127.0.0.1, not the "region-agent" container name: caddy and
+# region-agent both use network_mode: "service:wireguard", i.e. they share
+# wireguard's network namespace rather than being attached to it as their
+# own network participants, so there is no per-container DNS entry for
+# them to look up - only a shared loopback.
+{$AGENT_HOSTNAME} {
+	reverse_proxy 127.0.0.1:8912
+}

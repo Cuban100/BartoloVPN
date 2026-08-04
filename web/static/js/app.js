@@ -877,6 +877,7 @@ function switchTab(tabName) {
     if (tabName === 'wireguard') {
         loadWireguardPeers();
         loadDashboardData();
+        loadRegions();
     } else if (tabName === 'users') {
         loadUsers();
     } else if (tabName === 'openvpn') {
@@ -889,6 +890,8 @@ function switchTab(tabName) {
     } else if (tabName === 'ikev2') {
         loadIkev2Credentials();
         loadDashboardData();
+    } else if (tabName === 'regions') {
+        loadRegionsAdminTable();
     } else {
         // Stop monitoring when switching away from monitoring tab
         cleanupMonitoring();
@@ -998,6 +1001,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (addPeerForm) {
         addPeerForm.addEventListener('submit', handleAddPeer);
         console.log('Add peer form listener added');
+    }
+
+    // Add region form listener
+    const addRegionForm = document.getElementById('add-region-form');
+    if (addRegionForm) {
+        addRegionForm.addEventListener('submit', handleAddRegion);
+        console.log('Add region form listener added');
     }
     
     // Edit peer form listener
@@ -1109,8 +1119,32 @@ function showAddPeerModal() {
         // Clear form
         const form = document.getElementById('add-peer-form');
         if (form) form.reset();
+        loadRegions();
     } else {
         console.error('Add peer modal not found');
+    }
+}
+
+// Populate the region <select> in the Add Peer modal from /regions -
+// unlike the OpenVPN tab's hardcoded DNS-region dropdown, these are real,
+// DB-backed server locations, so they're fetched fresh each time.
+async function loadRegions() {
+    const select = document.getElementById('peer-region');
+    if (!select) return;
+    try {
+        const response = await apiFetch('/regions');
+        if (!response.ok) return;
+        const regions = await response.json();
+        const currentValue = select.value;
+        select.innerHTML = regions
+            .filter(r => r.is_active)
+            .map(r => `<option value="${escapeHtml(r.slug)}">${escapeHtml(r.display_name)}${r.is_local ? '' : ' (' + escapeHtml(r.country_code) + ')'}</option>`)
+            .join('');
+        if (currentValue && regions.some(r => r.slug === currentValue)) {
+            select.value = currentValue;
+        }
+    } catch (error) {
+        console.error('Error loading regions:', error);
     }
 }
 
@@ -1122,15 +1156,19 @@ function closeAddPeerModal() {
     }
 }
 
-// Edit peer functionality
-async function editPeer(peerName) {
-    console.log('Edit peer called with peerName:', peerName);
+// Edit peer functionality. region is immutable once a peer is created
+// (moving it to a different server means delete+recreate elsewhere), so
+// the edit form doesn't expose a region selector - it just needs to
+// remember which region this peer lives on, to route the config-fetch,
+// update, and later delete calls to the right place.
+async function editPeer(peerName, region = 'local') {
+    console.log('Edit peer called with peerName:', peerName, 'region:', region);
 
     try {
         // Read the peer's actual saved config so the form starts from its
         // real current AllowedIPs, not a hardcoded guess.
         let allowedIPs = '0.0.0.0/0';
-        const configResponse = await apiFetch(`/vpn/wireguard/peers/${peerName}/config`);
+        const configResponse = await apiFetch(`/vpn/wireguard/peers/${peerName}/config?region=${encodeURIComponent(region)}`);
         if (configResponse.ok) {
             const configText = await configResponse.text();
             const match = configText.match(/^AllowedIPs\s*=\s*(.+)$/m);
@@ -1138,6 +1176,7 @@ async function editPeer(peerName) {
         }
 
         document.getElementById('edit-peer-current-name').value = peerName;
+        document.getElementById('edit-peer-region').value = region;
         document.getElementById('edit-peer-name').value = peerName;
         document.getElementById('edit-peer-allowed-ips').value = allowedIPs;
 
@@ -1171,7 +1210,8 @@ async function handleAddPeer(event) {
     const peerData = {
         peer_name: formData.get('peer-name'),
         user_id: 1, // TODO: Get current user ID from token
-        allowed_ips: formData.get('peer-allowed-ips') || "0.0.0.0/0"
+        allowed_ips: formData.get('peer-allowed-ips') || "0.0.0.0/0",
+        region: formData.get('peer-region') || 'local'
     };
     
     try {
@@ -1225,9 +1265,9 @@ function closePeerQrModal() {
 }
 
 // Fetch and show the QR code for an already-existing peer
-async function showPeerQr(peerName) {
+async function showPeerQr(peerName, region = 'local') {
     try {
-        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}/qrcode`);
+        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}/qrcode?region=${encodeURIComponent(region)}`);
         if (response.ok) {
             const data = await response.json();
             showPeerQrModal(data.qr_code, data.peer_name);
@@ -1248,9 +1288,10 @@ async function handleEditPeer(event) {
     const currentName = formData.get('current-name');
     const newName = formData.get('peer-name');
     const allowedIPs = formData.get('peer-allowed-ips') || "0.0.0.0/0";
+    const region = formData.get('region') || 'local';
 
     try {
-        const response = await apiFetch(`/vpn/wireguard/peers/${currentName}`, {
+        const response = await apiFetch(`/vpn/wireguard/peers/${currentName}?region=${encodeURIComponent(region)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ peer_name: newName, allowed_ips: allowedIPs })
@@ -1282,13 +1323,17 @@ async function loadWireguardPeers() {
                 if (peers.length === 0) {
                     tableBody.innerHTML = `
                         <tr>
-                            <td colspan="5" class="text-center">No peers configured</td>
+                            <td colspan="6" class="text-center">No peers configured</td>
                         </tr>
                     `;
                 } else {
-                    tableBody.innerHTML = peers.map(peer => `
+                    tableBody.innerHTML = peers.map(peer => {
+                        const region = peer.region || 'local';
+                        const regionDisplay = peer.region_display || 'Local (this server)';
+                        return `
                         <tr>
-                            <td>${peer.name}</td>
+                            <td>${escapeHtml(peer.name)}</td>
+                            <td>${escapeHtml(regionDisplay)}</td>
                             <td>
                                 <div class="config-value-container inline">
                                     <span class="config-value masked" id="peer-key-${peer.name}" data-value="${peer.public_key || 'Not Available'}">••••••••••••••••••••••••••••••••••••••••••••••••••</span>
@@ -1303,23 +1348,27 @@ async function loadWireguardPeers() {
                             <td>${peer.ip}</td>
                             <td><span class="status-badge status-active">Active</span></td>
                             <td>
-                                <button class="btn btn-sm btn-secondary" onclick="console.log('Edit peer clicked for ${peer.name}'); editPeer('${peer.name}')">
+                                <button class="btn btn-sm btn-secondary" onclick="editPeer('${peer.name}', '${region}')">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                <button class="btn btn-sm btn-secondary" onclick="downloadPeerConfig('${peer.name}')">
+                                <button class="btn btn-sm btn-secondary" onclick="downloadPeerConfig('${peer.name}', '${region}')">
                                     <i class="fas fa-download"></i> Config
                                 </button>
-                                <button class="btn btn-sm btn-secondary" onclick="showPeerQr('${peer.name}')">
+                                <button class="btn btn-sm btn-secondary" onclick="showPeerQr('${peer.name}', '${region}')">
                                     <i class="fas fa-qrcode"></i> QR
                                 </button>
-                                <button class="btn btn-sm btn-danger" onclick="console.log('Delete peer clicked for ${peer.name}'); deletePeer('${peer.name}')">
+                                <button class="btn btn-sm btn-danger" onclick="deletePeer('${peer.name}', '${region}')">
                                     <i class="fas fa-trash"></i> Delete
                                 </button>
                             </td>
                         </tr>
-                    `).join('');
-                    console.log('WireGuard peer table updated with', peers.length, 'peers. Check if edit/delete buttons work now.');
+                    `;
+                    }).join('');
+                    console.log('WireGuard peer table updated with', peers.length, 'peers.');
                 }
+            }
+            if (data.warnings && data.warnings.length) {
+                data.warnings.forEach(w => showToast(w, 'warning', 6000));
             }
         } else {
             console.error('Failed to load peers');
@@ -1327,7 +1376,7 @@ async function loadWireguardPeers() {
             if (tableBody) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="text-center text-danger">Failed to load peers</td>
+                        <td colspan="6" class="text-center text-danger">Failed to load peers</td>
                     </tr>
                 `;
             }
@@ -1458,9 +1507,9 @@ async function loadIkev2Credentials() {
 }
 
 // Download peer configuration file
-async function downloadPeerConfig(peerName) {
+async function downloadPeerConfig(peerName, region = 'local') {
     try {
-        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}/config`);
+        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}/config?region=${encodeURIComponent(region)}`);
         if (response.ok) {
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
@@ -1481,15 +1530,15 @@ async function downloadPeerConfig(peerName) {
     }
 }
 
-// Delete peer (placeholder - needs DELETE endpoint)
-async function deletePeer(peerName) {
+// Delete peer
+async function deletePeer(peerName, region = 'local') {
     if (!confirm(`Are you sure you want to delete peer "${peerName}"?\n\nThis action cannot be undone and will remove the peer configuration.`)) {
         return;
     }
-    
+
     try {
-        console.log('Deleting peer:', peerName);
-        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}`, {
+        console.log('Deleting peer:', peerName, 'region:', region);
+        const response = await apiFetch(`/vpn/wireguard/peers/${peerName}?region=${encodeURIComponent(region)}`, {
             method: 'DELETE'
         });
         
@@ -1503,6 +1552,149 @@ async function deletePeer(peerName) {
     } catch (error) {
         console.error('Error deleting peer:', error);
         showToast('Failed to delete peer. Check console for details.', 'error');
+    }
+}
+
+// ========== REGIONS MANAGEMENT ==========
+
+function showAddRegionModal() {
+    const modal = document.getElementById('add-region-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        const form = document.getElementById('add-region-form');
+        if (form) form.reset();
+    }
+}
+
+function closeAddRegionModal() {
+    const modal = document.getElementById('add-region-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleAddRegion(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const regionData = {
+        slug: formData.get('region-slug'),
+        display_name: formData.get('region-display-name'),
+        country_code: formData.get('region-country-code'),
+        city: formData.get('region-city') || null,
+        agent_url: formData.get('region-agent-url'),
+        agent_key: formData.get('region-agent-key'),
+        wireguard_endpoint_host: formData.get('region-wg-host'),
+        wireguard_endpoint_port: parseInt(formData.get('region-wg-port'), 10) || 51820
+    };
+
+    try {
+        const response = await apiFetch('/regions', {
+            method: 'POST',
+            body: JSON.stringify(regionData)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showToast(`Region "${data.display_name}" added successfully`, 'success');
+            closeAddRegionModal();
+            event.target.reset();
+            loadRegionsAdminTable();
+            loadRegions();
+        } else {
+            showToast(data.detail || 'Failed to add region', 'error');
+        }
+    } catch (error) {
+        console.error('Error adding region:', error);
+        showToast('Error adding region', 'error');
+    }
+}
+
+async function loadRegionsAdminTable() {
+    const tableBody = document.getElementById('regions-table');
+    if (!tableBody) return;
+    try {
+        const response = await apiFetch('/regions');
+        if (!response.ok) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Failed to load regions</td></tr>';
+            return;
+        }
+        const regions = await response.json();
+        if (regions.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No regions configured</td></tr>';
+            return;
+        }
+        tableBody.innerHTML = regions.map(r => {
+            const location = r.city ? `${r.display_name} (${r.city}, ${r.country_code})` : `${r.display_name} (${r.country_code})`;
+            const healthClass = r.health_status === 'healthy' ? 'status-active' : 'status-inactive';
+            const lastChecked = r.last_health_check ? new Date(r.last_health_check + 'Z').toLocaleString() : 'Never';
+            const actions = r.is_local
+                ? '<span class="form-help">Local server - not editable</span>'
+                : `
+                    <button class="btn btn-sm btn-secondary" onclick="testRegionHealth(${r.id})">
+                        <i class="fas fa-heartbeat"></i> Check
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteRegion(${r.id}, '${escapeHtml(r.slug)}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                `;
+            return `
+                <tr>
+                    <td>${escapeHtml(location)}</td>
+                    <td>${escapeHtml(r.slug)}</td>
+                    <td><span class="status-badge ${healthClass}">${escapeHtml(r.health_status)}</span></td>
+                    <td>${r.peer_count}</td>
+                    <td>${escapeHtml(lastChecked)}</td>
+                    <td>${actions}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading regions table:', error);
+        tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading regions</td></tr>';
+    }
+}
+
+async function testRegionHealth(regionId) {
+    try {
+        const response = await apiFetch(`/regions/${regionId}/health-check`, { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            showToast(`Region "${data.display_name}" is ${data.health_status}`, data.health_status === 'healthy' ? 'success' : 'warning');
+            loadRegionsAdminTable();
+        } else {
+            showToast(data.detail || 'Health check failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error checking region health:', error);
+        showToast('Error checking region health', 'error');
+    }
+}
+
+async function deleteRegion(regionId, slug) {
+    if (!confirm(`Are you sure you want to delete region "${slug}"?\n\nExisting peers on that server are not affected, but the dashboard will stop being able to manage them.`)) {
+        return;
+    }
+    try {
+        const response = await apiFetch(`/regions/${regionId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (response.ok) {
+            showToast(`Region "${slug}" deleted`, 'success');
+            loadRegionsAdminTable();
+            loadRegions();
+        } else if (response.status === 409) {
+            if (confirm(`${data.detail}\n\nDelete anyway?`)) {
+                const forceResponse = await apiFetch(`/regions/${regionId}?force=true`, { method: 'DELETE' });
+                if (forceResponse.ok) {
+                    showToast(`Region "${slug}" deleted`, 'success');
+                    loadRegionsAdminTable();
+                    loadRegions();
+                } else {
+                    showToast('Failed to delete region', 'error');
+                }
+            }
+        } else {
+            showToast(data.detail || 'Failed to delete region', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting region:', error);
+        showToast('Error deleting region', 'error');
     }
 }
 
@@ -1896,86 +2088,6 @@ async function deleteOpenVPNClient(clientName) {
     }
 }
 
-// WireGuard Instructions Functions
-function toggleInstructions() {
-    const container = document.getElementById('wireguard-instructions');
-    const toggleBtn = document.getElementById('instructions-toggle');
-    
-    if (container.style.display === 'none') {
-        container.style.display = 'block';
-        container.classList.add('expanded');
-        toggleBtn.textContent = 'Hide Instructions';
-        // Add smooth expand animation
-        container.style.maxHeight = '0px';
-        setTimeout(() => {
-            container.style.maxHeight = '2000px';
-        }, 10);
-    } else {
-        container.style.maxHeight = '0px';
-        toggleBtn.textContent = 'Show Instructions';
-        setTimeout(() => {
-            container.style.display = 'none';
-            container.classList.remove('expanded');
-        }, 300);
-    }
-}
-
-function showInstructionTab(tabName) {
-    // Hide all tabs
-    const tabs = document.querySelectorAll('.instruction-tab');
-    tabs.forEach(tab => {
-        tab.classList.remove('active');
-    });
-    
-    // Remove active class from all tab buttons
-    const tabButtons = document.querySelectorAll('.tab-button');
-    tabButtons.forEach(button => {
-        button.classList.remove('active');
-    });
-    
-    // Show selected tab
-    const selectedTab = document.getElementById(`${tabName}-tab`);
-    if (selectedTab) {
-        selectedTab.classList.add('active');
-    }
-    
-    // Add active class to clicked button
-    const clickedButton = event.target;
-    clickedButton.classList.add('active');
-}
-
-function copyToClipboard(button) {
-    const codeBlock = button.previousElementSibling;
-    const text = codeBlock.textContent;
-    
-    // Create temporary textarea to copy text
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    document.body.appendChild(textarea);
-    textarea.select();
-    
-    try {
-        document.execCommand('copy');
-        
-        // Visual feedback
-        const originalText = button.textContent;
-        button.textContent = 'Copied!';
-        button.classList.add('copied');
-        
-        setTimeout(() => {
-            button.textContent = originalText;
-            button.classList.remove('copied');
-        }, 2000);
-        
-        showToast('Code copied to clipboard', 'success');
-    } catch (err) {
-        console.error('Failed to copy text: ', err);
-        showToast('Failed to copy code', 'error');
-    } finally {
-        document.body.removeChild(textarea);
-    }
-}
-
 // IKEv2 Functions
 
 function showAddIKEv2UserModal() {
@@ -2078,106 +2190,6 @@ async function deleteIKEv2User(username) {
     } catch (error) {
         console.error('Error deleting IKEv2 user:', error);
         showToast('Failed to delete user', 'error');
-    }
-}
-
-function toggleIKEv2Instructions() {
-    const instructionsDiv = document.getElementById('ikev2-instructions');
-    const toggleButton = document.getElementById('ikev2-instructions-toggle');
-    
-    if (instructionsDiv.style.display === 'none') {
-        instructionsDiv.style.display = 'block';
-        toggleButton.textContent = 'Hide Instructions';
-    } else {
-        instructionsDiv.style.display = 'none';
-        toggleButton.textContent = 'Show Instructions';
-    }
-}
-
-function showIKEv2OSInstructions(osType) {
-    // Hide all OS instruction divs
-    const allInstructions = document.querySelectorAll('#ikev2-instructions .os-instructions');
-    allInstructions.forEach(div => {
-        div.style.display = 'none';
-    });
-    
-    // Remove active class from all OS buttons
-    const allButtons = document.querySelectorAll('#ikev2-instructions .os-btn');
-    allButtons.forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    // Show selected OS instructions
-    const targetDiv = document.getElementById(`ikev2-${osType}-instructions`);
-    if (targetDiv) {
-        targetDiv.style.display = 'block';
-    }
-    
-    // Add active class to selected button
-    const targetButton = document.getElementById(`ikev2-os-${osType}`);
-    if (targetButton) {
-        targetButton.classList.add('active');
-    }
-    
-    // Update server IP in all instruction sections for the selected OS
-    updateIKEv2ServerIP();
-}
-
-function showIKEv2LinuxDistro(distro) {
-    // Hide all distro install sections
-    const allDistros = document.querySelectorAll('#ikev2-linux-instructions .distro-install');
-    allDistros.forEach(div => {
-        div.classList.remove('active');
-        div.style.display = 'none';
-    });
-    
-    // Remove active class from all tab buttons
-    const allTabs = document.querySelectorAll('#ikev2-linux-instructions .tab-button');
-    allTabs.forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    // Show selected distro
-    const targetDiv = document.getElementById(`ikev2-${distro}-install`);
-    if (targetDiv) {
-        targetDiv.classList.add('active');
-        targetDiv.style.display = 'block';
-    }
-    
-    // Add active class to clicked button
-    event.target.classList.add('active');
-}
-
-function updateIKEv2ServerIP() {
-    // Get server IP (you would implement this based on your backend)
-    // For now, we'll use a placeholder
-    const serverIP = window.location.hostname; // or fetch from API
-    
-    // Update all server IP elements in IKEv2 instructions
-    const serverIPElements = document.querySelectorAll('[id*="server-ip"], [id*="remote-id"]');
-    serverIPElements.forEach(element => {
-        if (element.id.includes('ikev2') || element.closest('#ikev2-instructions')) {
-            element.textContent = serverIP;
-        }
-    });
-}
-
-function copyServerIP() {
-    const serverIP = window.location.hostname;
-    
-    const textarea = document.createElement('textarea');
-    textarea.value = serverIP;
-    document.body.appendChild(textarea);
-    textarea.select();
-    
-    try {
-        document.execCommand('copy');
-        showToast('Server IP copied to clipboard', 'success');
-    } catch (err) {
-        console.error('Failed to copy server IP: ', err);
-        showToast('Failed to copy server IP', 'error');
-    } finally {
-        document.body.removeChild(textarea);
     }
 }
 
@@ -2578,6 +2590,10 @@ window.editPeer = editPeer;
 window.closeEditPeerModal = closeEditPeerModal;
 window.downloadPeerConfig = downloadPeerConfig;
 window.deletePeer = deletePeer;
+window.showAddRegionModal = showAddRegionModal;
+window.closeAddRegionModal = closeAddRegionModal;
+window.testRegionHealth = testRegionHealth;
+window.deleteRegion = deleteRegion;
 window.showAddUserModal = showAddUserModal;
 window.closeAddUserModal = closeAddUserModal;
 window.editUser = editUser;
@@ -2586,15 +2602,8 @@ window.showAddOpenVPNClientModal = showAddOpenVPNClientModal;
 window.closeAddOpenVPNClientModal = closeAddOpenVPNClientModal;
 window.downloadOpenVPNConfig = downloadOpenVPNConfig;
 window.deleteOpenVPNClient = deleteOpenVPNClient;
-window.toggleInstructions = toggleInstructions;
-window.showInstructionTab = showInstructionTab;
-window.copyToClipboard = copyToClipboard;
 window.showAddIKEv2UserModal = showAddIKEv2UserModal;
 window.closeAddIKEv2UserModal = closeAddIKEv2UserModal;
-window.toggleIKEv2Instructions = toggleIKEv2Instructions;
-window.showIKEv2OSInstructions = showIKEv2OSInstructions;
-window.showIKEv2LinuxDistro = showIKEv2LinuxDistro;
-window.copyServerIP = copyServerIP;
 window.copyText = copyText;
 window.toggleConfigVisibility = toggleConfigVisibility;
 window.copyConfigValue = copyConfigValue;

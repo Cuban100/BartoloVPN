@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, RedirectResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -103,6 +103,11 @@ class WireGuardPeerCreate(BaseModel):
     user_id: int
     allowed_ips: str = "0.0.0.0/0"
     dns_servers: str = "1.1.1.1,8.8.8.8"
+    # "local" (default) keeps using this box's own WireGuard server via
+    # VPNManager, exactly as before this field existed - any caller that
+    # omits it (old frontend build, scripts, tests) is unaffected. Any
+    # other value must match a Region.slug registered via POST /regions.
+    region: str = "local"
 
 class WireGuardPeerUpdate(BaseModel):
     """Rename a peer and/or change its own AllowedIPs (split-tunnel
@@ -159,11 +164,14 @@ security = HTTPBearer()
 
 # Import database models
 from database import (
-    User, VPNConfig, UserSession, UsageLog, ServerEndpoint, IPRotation, DnsQueryLog,
-    AsyncSessionLocal, init_db, create_default_admin, create_default_endpoints, get_db
+    User, VPNConfig, UserSession, UsageLog, ServerEndpoint, IPRotation, DnsQueryLog, Region,
+    AsyncSessionLocal, init_db, create_default_admin, create_default_endpoints, create_default_region, get_db
 )
 from ip_rotation import ip_rotation_service
 from dns_activity import dns_activity_poller, _demux_docker_log_stream
+import region_service
+from region_service import region_health_poller
+from region_client import RegionClient
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -1314,17 +1322,22 @@ async def lifespan(app: FastAPI):
     await init_db()
     await create_default_admin()
     await create_default_endpoints()
-    
+    await create_default_region()
+
     # Initialize IP rotation service
     await ip_rotation_service.initialize()
 
     # Start background polling of CoreDNS query logs for the Activity tab
     dns_poller_task = asyncio.create_task(dns_activity_poller())
 
+    # Start background health-checking of remote regions (multi-region feature)
+    region_poller_task = asyncio.create_task(region_health_poller())
+
     yield
 
     # Shutdown
     dns_poller_task.cancel()
+    region_poller_task.cancel()
     print("Shutting down BartoloVPN API...")
 
 # Create FastAPI app
@@ -2136,58 +2149,111 @@ async def get_wireguard_status(current_user: dict = Depends(get_current_user)):
     """Get WireGuard status"""
     return await vpn_manager.get_wireguard_status()
 
+async def _list_local_wireguard_peers() -> List[Dict[str, Any]]:
+    """Unchanged local file-scan logic, extracted verbatim so it can be
+    called both directly (region=local) and as part of the aggregated
+    all-regions list below."""
+    peers_dir = f"{settings.wireguard_config_path}/peers"
+    peers = []
+
+    if os.path.exists(peers_dir):
+        for filename in os.listdir(peers_dir):
+            if filename.endswith('.conf'):
+                peer_name = filename[:-5]  # Remove .conf extension
+                config_path = os.path.join(peers_dir, filename)
+
+                # Read peer configuration
+                with open(config_path, 'r') as f:
+                    config_content = f.read()
+
+                # Extract IP and private key from config
+                address_line = ""
+                private_key = ""
+                for line in config_content.split('\n'):
+                    stripped = line.strip()
+                    if stripped.startswith('Address'):
+                        address_line = stripped.split('=', 1)[1].strip()
+                    elif stripped.startswith('PrivateKey'):
+                        private_key = stripped.split('=', 1)[1].strip()
+
+                # Derive the public key from the stored private key so it
+                # can be shown in the dashboard (only the private key is
+                # persisted in the peer's own config file)
+                public_key = ""
+                if private_key:
+                    proc = await asyncio.create_subprocess_exec(
+                        'wg', 'pubkey',
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE
+                    )
+                    stdout, _ = await proc.communicate(input=private_key.encode())
+                    public_key = stdout.decode().strip()
+
+                peers.append({
+                    "name": peer_name,
+                    "ip": address_line,
+                    "public_key": public_key,
+                    "config_file": filename,
+                    "created_at": os.path.getctime(config_path),
+                    "region": "local",
+                    "region_display": "Local (this server)",
+                })
+
+    return peers
+
 @app.get("/vpn/wireguard/peers")
 async def list_wireguard_peers(current_user: dict = Depends(get_current_user)):
-    """List all WireGuard peers"""
+    """List all WireGuard peers across every region: the local server
+    (unchanged behavior/format) plus every active remote region, fanned
+    out and merged. A region that's unreachable degrades to contributing
+    no peers rather than failing the whole request - each remote peer is
+    tagged with its region so later actions (download/QR/edit/delete) know
+    which agent to talk to."""
     try:
-        peers_dir = f"{settings.wireguard_config_path}/peers"
-        peers = []
-        
-        if os.path.exists(peers_dir):
-            for filename in os.listdir(peers_dir):
-                if filename.endswith('.conf'):
-                    peer_name = filename[:-5]  # Remove .conf extension
-                    config_path = os.path.join(peers_dir, filename)
-                    
-                    # Read peer configuration
-                    with open(config_path, 'r') as f:
-                        config_content = f.read()
-                    
-                    # Extract IP and private key from config
-                    address_line = ""
-                    private_key = ""
-                    for line in config_content.split('\n'):
-                        stripped = line.strip()
-                        if stripped.startswith('Address'):
-                            address_line = stripped.split('=', 1)[1].strip()
-                        elif stripped.startswith('PrivateKey'):
-                            private_key = stripped.split('=', 1)[1].strip()
+        peers = await _list_local_wireguard_peers()
+        warnings = []
 
-                    # Derive the public key from the stored private key so it
-                    # can be shown in the dashboard (only the private key is
-                    # persisted in the peer's own config file)
-                    public_key = ""
-                    if private_key:
-                        proc = await asyncio.create_subprocess_exec(
-                            'wg', 'pubkey',
-                            stdin=asyncio.subprocess.PIPE,
-                            stdout=asyncio.subprocess.PIPE
-                        )
-                        stdout, _ = await proc.communicate(input=private_key.encode())
-                        public_key = stdout.decode().strip()
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Region).where(Region.is_active == True, Region.is_local == False)
+            )
+            remote_regions = result.scalars().all()
 
+        for region in remote_regions:
+            try:
+                client = region_service.build_region_client(region)
+                remote_peers = await client.list_peers()
+                for p in remote_peers:
                     peers.append({
-                        "name": peer_name,
-                        "ip": address_line,
-                        "public_key": public_key,
-                        "config_file": filename,
-                        "created_at": os.path.getctime(config_path)
+                        "name": p.get("peer_name"),
+                        "ip": p.get("ip"),
+                        "public_key": p.get("public_key"),
+                        "allowed_ips": p.get("allowed_ips"),
+                        "region": region.slug,
+                        "region_display": region.display_name,
                     })
-        
-        return {"peers": peers}
+            except Exception as e:
+                logger.warning(f"Could not list peers for region {region.slug}: {e}")
+                warnings.append(f"Region '{region.slug}' ({region.display_name}) is unreachable - its peers are not shown")
+
+        response = {"peers": peers}
+        if warnings:
+            response["warnings"] = warnings
+        return response
     except Exception as e:
         logger.error(f"Error listing WireGuard peers: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list peers: {str(e)}")
+
+async def _resolve_region_client(region_slug: str) -> RegionClient:
+    region = await region_service.get_region_by_slug(region_slug)
+    if region is None:
+        raise HTTPException(status_code=404, detail=f"Region '{region_slug}' not found")
+    if not region.is_active:
+        raise HTTPException(status_code=400, detail=f"Region '{region_slug}' is not active")
+    try:
+        return region_service.build_region_client(region)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/vpn/wireguard/peers")
 async def create_wireguard_peer(
@@ -2197,52 +2263,76 @@ async def create_wireguard_peer(
     """Create new WireGuard peer"""
     if current_user["role"] != "admin" and peer.user_id != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
-    return await vpn_manager.create_wireguard_peer(peer.peer_name, peer.user_id, peer.allowed_ips)
+
+    if peer.region == "local":
+        return await vpn_manager.create_wireguard_peer(peer.peer_name, peer.user_id, peer.allowed_ips)
+
+    client = await _resolve_region_client(peer.region)
+    return await client.create_peer(peer.peer_name, peer.allowed_ips)
 
 @app.get("/vpn/wireguard/peers/{peer_name}/config")
 async def download_wireguard_config(
     peer_name: str,
+    region: str = "local",
     current_user: dict = Depends(get_current_user)
 ):
     """Download WireGuard peer configuration"""
-    config_file = f"{settings.wireguard_config_path}/peers/{peer_name}.conf"
-    
-    if not os.path.exists(config_file):
-        raise HTTPException(status_code=404, detail="Peer configuration not found")
-    
-    return FileResponse(config_file, filename=f"BartoloVPN-{peer_name}.conf")
+    if region == "local":
+        config_file = f"{settings.wireguard_config_path}/peers/{peer_name}.conf"
+
+        if not os.path.exists(config_file):
+            raise HTTPException(status_code=404, detail="Peer configuration not found")
+
+        return FileResponse(config_file, filename=f"BartoloVPN-{peer_name}.conf")
+
+    client = await _resolve_region_client(region)
+    result = await client.get_peer_config(peer_name)
+    return PlainTextResponse(
+        result["config"],
+        headers={"Content-Disposition": f'attachment; filename="BartoloVPN-{peer_name}.conf"'}
+    )
 
 @app.get("/vpn/wireguard/peers/{peer_name}/qrcode")
 async def get_wireguard_peer_qrcode(
     peer_name: str,
+    region: str = "local",
     current_user: dict = Depends(get_current_user)
 ):
     """Generate a QR code for an existing peer's config (e.g. to scan with the
     WireGuard mobile app), without needing to recreate the peer's keys"""
-    config_file = f"{settings.wireguard_config_path}/peers/{peer_name}.conf"
+    if region == "local":
+        config_file = f"{settings.wireguard_config_path}/peers/{peer_name}.conf"
 
-    if not os.path.exists(config_file):
-        raise HTTPException(status_code=404, detail="Peer configuration not found")
+        if not os.path.exists(config_file):
+            raise HTTPException(status_code=404, detail="Peer configuration not found")
 
-    with open(config_file, 'r') as f:
-        config_content = f.read()
+        with open(config_file, 'r') as f:
+            config_content = f.read()
 
-    qr_code = await vpn_manager._generate_qr_code(config_content)
-    return {"peer_name": peer_name, "qr_code": qr_code}
+        qr_code = await vpn_manager._generate_qr_code(config_content)
+        return {"peer_name": peer_name, "qr_code": qr_code}
+
+    client = await _resolve_region_client(region)
+    return await client.get_peer_qrcode(peer_name)
 
 @app.put("/vpn/wireguard/peers/{peer_name}")
 async def update_wireguard_peer(
     peer_name: str,
     update: WireGuardPeerUpdate,
+    region: str = "local",
     current_user: dict = Depends(get_current_user)
 ):
     """Rename a WireGuard peer and/or change its AllowedIPs"""
-    return await vpn_manager.update_wireguard_peer(peer_name, update.peer_name, update.allowed_ips)
+    if region == "local":
+        return await vpn_manager.update_wireguard_peer(peer_name, update.peer_name, update.allowed_ips)
+
+    client = await _resolve_region_client(region)
+    return await client.update_peer(peer_name, update.peer_name, update.allowed_ips)
 
 @app.delete("/vpn/wireguard/peers/{peer_name}")
 async def delete_wireguard_peer(
     peer_name: str,
+    region: str = "local",
     current_user: dict = Depends(get_current_user)
 ):
     """Delete WireGuard peer"""
@@ -2251,8 +2341,12 @@ async def delete_wireguard_peer(
         # TODO: Check if this peer belongs to the current user
         # For now, only admin can delete
         raise HTTPException(status_code=403, detail="Only admin can delete peers")
-    
-    return await vpn_manager.delete_wireguard_peer(peer_name)
+
+    if region == "local":
+        return await vpn_manager.delete_wireguard_peer(peer_name)
+
+    client = await _resolve_region_client(region)
+    return await client.delete_peer(peer_name)
 
 # OpenVPN Management Routes
 @app.get("/vpn/openvpn/status")
@@ -2523,8 +2617,152 @@ async def get_endpoint_stats(current_user: dict = Depends(get_current_user)):
     """Get endpoint statistics"""
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
     return await ip_rotation_service.get_endpoint_stats()
+
+def _region_out(region: Region) -> dict:
+    """Never includes agent_key_encrypted - the dashboard never needs the
+    key back once a region is registered, only whether it's configured."""
+    return {
+        "id": region.id,
+        "slug": region.slug,
+        "display_name": region.display_name,
+        "country_code": region.country_code,
+        "city": region.city,
+        "is_local": region.is_local,
+        "agent_url": region.agent_url,
+        "wireguard_endpoint_host": region.wireguard_endpoint_host,
+        "wireguard_endpoint_port": region.wireguard_endpoint_port,
+        "is_active": region.is_active,
+        "health_status": region.health_status,
+        "last_health_check": region.last_health_check.isoformat() if region.last_health_check else None,
+        "last_health_error": region.last_health_error,
+        "peer_count": region.peer_count,
+    }
+
+class RegionCreate(BaseModel):
+    slug: str = Field(..., min_length=2, max_length=30, pattern=r"^[a-z0-9-]+$")
+    display_name: str = Field(..., min_length=2, max_length=100)
+    country_code: str = Field(..., min_length=2, max_length=2)
+    city: Optional[str] = None
+    agent_url: str = Field(..., description="e.g. https://your-region-hostname.example.com")
+    agent_key: str = Field(..., min_length=16, description="Shown once by scripts/provision-region.sh")
+    wireguard_endpoint_host: str
+    wireguard_endpoint_port: int = 51820
+
+class RegionUpdate(BaseModel):
+    display_name: Optional[str] = None
+    country_code: Optional[str] = Field(None, min_length=2, max_length=2)
+    city: Optional[str] = None
+    agent_url: Optional[str] = None
+    agent_key: Optional[str] = Field(None, min_length=16, description="Only send this to rotate the key")
+    wireguard_endpoint_host: Optional[str] = None
+    wireguard_endpoint_port: Optional[int] = None
+    is_active: Optional[bool] = None
+
+@app.get("/regions")
+async def list_regions(current_user: dict = Depends(get_current_user)):
+    """Get all regions (the "local" region plus any remote ones registered)."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Region).order_by(Region.is_local.desc(), Region.id))
+        regions = result.scalars().all()
+        return [_region_out(r) for r in regions]
+
+@app.post("/regions")
+async def create_region(region: RegionCreate, current_user: dict = Depends(get_current_user)):
+    """Register a new remote region. Health-checks the agent before
+    committing - reject with 400 if it's unreachable or the key is wrong,
+    rather than silently saving a region that can never actually be used."""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    existing = await region_service.get_region_by_slug(region.slug)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"A region with slug '{region.slug}' already exists")
+
+    test_client = RegionClient(region.slug, region.agent_url, region.agent_key)
+    try:
+        await test_client.health()
+    except HTTPException as e:
+        raise HTTPException(status_code=400, detail=f"Could not verify new region before saving: {e.detail}")
+
+    async with AsyncSessionLocal() as session:
+        new_region = Region(
+            slug=region.slug,
+            display_name=region.display_name,
+            country_code=region.country_code.upper(),
+            city=region.city,
+            is_local=False,
+            agent_url=region.agent_url,
+            agent_key_encrypted=region_service.encrypt_agent_key(region.agent_key),
+            wireguard_endpoint_host=region.wireguard_endpoint_host,
+            wireguard_endpoint_port=region.wireguard_endpoint_port,
+            is_active=True,
+            health_status="healthy",
+            last_health_check=datetime.utcnow(),
+        )
+        session.add(new_region)
+        await session.commit()
+        await session.refresh(new_region)
+        return _region_out(new_region)
+
+@app.put("/regions/{region_id}")
+async def update_region(region_id: int, update: RegionUpdate, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    async with AsyncSessionLocal() as session:
+        region = await session.get(Region, region_id)
+        if region is None:
+            raise HTTPException(status_code=404, detail="Region not found")
+        if region.is_local:
+            raise HTTPException(status_code=400, detail="The local region cannot be edited")
+
+        for field in ("display_name", "city", "agent_url", "wireguard_endpoint_host", "wireguard_endpoint_port", "is_active"):
+            value = getattr(update, field)
+            if value is not None:
+                setattr(region, field, value)
+        if update.country_code is not None:
+            region.country_code = update.country_code.upper()
+        if update.agent_key is not None:
+            region.agent_key_encrypted = region_service.encrypt_agent_key(update.agent_key)
+
+        await session.commit()
+        await session.refresh(region)
+        return _region_out(region)
+
+@app.delete("/regions/{region_id}")
+async def delete_region(region_id: int, force: bool = False, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    async with AsyncSessionLocal() as session:
+        region = await session.get(Region, region_id)
+        if region is None:
+            raise HTTPException(status_code=404, detail="Region not found")
+        if region.is_local:
+            raise HTTPException(status_code=400, detail="The local region cannot be deleted")
+        if region.peer_count > 0 and not force:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Region {region.slug} still has {region.peer_count} peer(s) - pass ?force=true to delete anyway (their configs on the remote agent are not affected)"
+            )
+        await session.delete(region)
+        await session.commit()
+        return {"message": f"Region {region.slug} deleted"}
+
+@app.post("/regions/{region_id}/health-check")
+async def check_region_health(region_id: int, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    async with AsyncSessionLocal() as session:
+        region = await session.get(Region, region_id)
+        if region is None:
+            raise HTTPException(status_code=404, detail="Region not found")
+
+    updated = await region_service.health_check_region(region)
+    return _region_out(updated)
 
 @app.get("/users/{user_id}/configs")
 async def get_user_configs(

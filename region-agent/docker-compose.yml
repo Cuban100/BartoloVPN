@@ -1,0 +1,87 @@
+
+# BartoloVPN Region Agent - deploy this on a remote VPS to add it as a
+# real, separate-exit-IP WireGuard location. Run scripts/provision-region.sh
+# from the main repo instead of copying this file by hand where possible -
+# it fills in .env and the Caddyfile for you.
+#
+# Before running: copy env.example to .env and fill in AGENT_API_KEY
+# (openssl rand -hex 32), SERVER_IP (this VPS's public IP), and
+# AGENT_HOSTNAME (a hostname already pointed at this VPS, or an
+# nip.io/sslip.io wildcard address if you don't own a domain).
+
+services:
+  wireguard:
+    image: linuxserver/wireguard:latest
+    container_name: bartolo-region-wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - SERVERURL=${SERVER_IP}
+      - SERVERPORT=${WIREGUARD_PORT:-51820}
+      - PEERS=0
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=${WIREGUARD_SUBNET:-10.13.13.0}
+      - ALLOWEDIPS=0.0.0.0/0
+      - LOG_CONFS=true
+    volumes:
+      - ./config/wireguard:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - "${WIREGUARD_PORT:-51820}:51820/udp"
+      # Published here, not on caddy/region-agent below, because they share
+      # this container's network namespace (network_mode: "service:wireguard")
+      # - same pattern the main BartoloVPN docker-compose.yml uses for vpn-api.
+      - "80:80"
+      - "443:443"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
+    network_mode: bridge
+
+  # The agent shares wireguard's network namespace (same pattern the main
+  # BartoloVPN repo uses for vpn-api), so it can run `wg`/`ip route`
+  # directly against wg0 with no separate networking to configure.
+  region-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bartolo-region-agent
+    cap_add:
+      - NET_ADMIN
+    env_file:
+      - .env
+    environment:
+      - WIREGUARD_PORT=${WIREGUARD_PORT:-51820}
+      - WIREGUARD_CONFIG_PATH=/config/wireguard
+    volumes:
+      - ./config:/config
+    restart: unless-stopped
+    network_mode: "service:wireguard"
+    depends_on:
+      - wireguard
+
+  # Terminates real TLS for the agent's API - the agent key must never
+  # cross the public internet over plain HTTP. Automatic Let's Encrypt via
+  # the Caddyfile in this directory.
+  caddy:
+    image: caddy:2-alpine
+    container_name: bartolo-region-caddy
+    env_file:
+      - .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    network_mode: "service:wireguard"
+    depends_on:
+      - region-agent
+
+volumes:
+  caddy_data:
+  caddy_config:

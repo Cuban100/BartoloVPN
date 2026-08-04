@@ -107,6 +107,12 @@ env/
 venv/
 ENV/
 env.bak/
+
+# Region agent local test artifacts - config-test1/ holds real WireGuard
+# private keys generated while testing region-agent locally, and
+# .env.local-test holds its test agent key. Never commit either.
+region-agent/config-test1/
+region-agent/.env.local-test
 venv.bak/
 
 # Spyder project settings

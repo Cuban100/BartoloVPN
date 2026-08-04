@@ -1,0 +1,76 @@
+
+# Throwaway local stand-in "remote" region, for validating the region-agent
+# + central-orchestration path on this dev host without any real paid VPS.
+# Distinct container names/ports/volumes from docker-compose.yml so this can
+# run alongside the main BartoloVPN stack and a real region deployment.
+#
+# No Caddy/TLS here - the agent is bound to 127.0.0.1 only, so plain HTTP
+# is fine for same-box testing (it never leaves the machine). Do NOT use
+# this file on a real VPS - use docker-compose.yml instead.
+#
+# Usage:
+#   cp env.local-test.example .env.local-test
+#   docker compose -f docker-compose.local-test.yml --env-file .env.local-test up -d
+#   curl -H "X-Agent-Key: $AGENT_API_KEY" http://127.0.0.1:8788/health
+
+services:
+  wireguard-test1:
+    image: linuxserver/wireguard:latest
+    container_name: bartolo-wireguard-test1
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - SERVERURL=127.0.0.1
+      - SERVERPORT=51821
+      - PEERS=0
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.13.13.0
+      - ALLOWEDIPS=0.0.0.0/0
+      - LOG_CONFS=true
+    volumes:
+      - ./config-test1/wireguard:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - "127.0.0.1:51821:51820/udp"
+      # Published here, not on the caddy/agent services below, since they
+      # share this container's network namespace.
+      - "127.0.0.1:8788:8788"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
+    network_mode: bridge
+
+  region-agent-test1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bartolo-region-agent-test1
+    cap_add:
+      - NET_ADMIN
+    env_file:
+      - .env.local-test
+    environment:
+      - SERVER_IP=127.0.0.1
+      - WIREGUARD_PORT=51821
+      - WIREGUARD_CONFIG_PATH=/config/wireguard
+    volumes:
+      - ./config-test1:/config
+    restart: unless-stopped
+    network_mode: "service:wireguard-test1"
+    depends_on:
+      - wireguard-test1
+
+  caddy-proxy-test1:
+    image: caddy:2-alpine
+    container_name: bartolo-caddy-test1
+    # Proxies to 127.0.0.1, not the "region-agent-test1" container name -
+    # see the note in Caddyfile for why (shared netns, no per-container DNS).
+    command: caddy reverse-proxy --from :8788 --to 127.0.0.1:8912
+    network_mode: "service:wireguard-test1"
+    depends_on:
+      - region-agent-test1
