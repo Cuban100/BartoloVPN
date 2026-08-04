@@ -339,18 +339,25 @@ async def _list_availability_domains(config: dict, compartment_id: str) -> list:
     return [ad.name for ad in ads]
 
 
-UBUNTU_VERSION = "20.04"
+UBUNTU_VERSION = "24.04"
 
 async def _pick_ubuntu_image(config: dict, compartment_id: str) -> str:
-    """Pins to Ubuntu 20.04 specifically, rather than whatever happens to
-    be the most-recently-published Canonical Ubuntu image for the shape
-    - "newest wins" was untested and could just as easily land on a
-    variant that behaves differently from the one actually verified to
-    work. 24.04 Minimal was tried first and confirmed NOT available for
-    VM.Standard.E2.1.Micro in a real tenancy (Minimal images are mainly
-    published for newer flex/Ampere shapes) - 20.04 (non-Minimal) is
-    what the operator's own manual, confirmed-working Console launch
-    actually used for this exact shape."""
+    """Pins to Ubuntu 24.04 (regular, non-Minimal - confirmed available
+    for VM.Standard.E2.1.Micro in a real tenancy), rather than whatever
+    happens to be the most-recently-published Canonical Ubuntu image for
+    the shape - "newest wins" was untested and could just as easily land
+    on a variant that behaves differently from the one actually verified
+    to work.
+
+    Version history from real production failures, in order: 24.04
+    Minimal was tried first and confirmed NOT available for this shape
+    (Minimal images are mainly published for newer flex/Ampere shapes).
+    Fell back to 20.04 ("focal") next, which launched fine but is
+    officially end-of-life - Docker's own install script started failing
+    on it too ("Unable to locate package docker-model-plugin", a package
+    no longer built for EOL releases), independently of the shape/image
+    question entirely. 24.04 ("noble") is Ubuntu's current LTS, so
+    Docker's installer should have full, current package support."""
     compute = oci.core.ComputeClient(config)
     images = (await _run_sync(
         compute.list_images,

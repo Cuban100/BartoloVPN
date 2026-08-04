@@ -54,24 +54,25 @@ def test_service_error_message_includes_operation_name():
 
 
 def test_pick_ubuntu_image_picks_newest_matching_version(client, admin_headers, monkeypatch):
-    """Pins to Ubuntu 20.04 specifically (operating_system_version filter)
+    """Pins to Ubuntu 24.04 specifically (operating_system_version filter)
     rather than trusting whatever list_images happens to return across
     all versions - untested "pick the latest, any version" logic is
     exactly the kind of thing that silently regresses when Oracle
-    publishes a new image. 20.04 was chosen because it's what the
-    operator's own manual, confirmed-working Console launch used for
-    this exact shape (24.04 Minimal was tried first and confirmed NOT
-    available for VM.Standard.E2.1.Micro in a real tenancy - see
-    UBUNTU_VERSION's docstring)."""
+    publishes a new image. See UBUNTU_VERSION's docstring for the real
+    production history behind this choice: 24.04 Minimal wasn't
+    available for this shape, 20.04 launched but is EOL and broke
+    Docker's own installer, 24.04 (regular) is the current LTS with full
+    package support and was already confirmed to have images available
+    for this shape."""
     async def scenario():
         older_image = SimpleNamespace(
             id="ocid1.image.oc1..older",
-            display_name="Canonical-Ubuntu-20.04-2025.06.01-0",
+            display_name="Canonical-Ubuntu-24.04-2025.06.01-0",
             time_created="2025-06-01T00:00:00Z",
         )
         newer_image = SimpleNamespace(
             id="ocid1.image.oc1..newer",
-            display_name="Canonical-Ubuntu-20.04-2025.07.23-0",
+            display_name="Canonical-Ubuntu-24.04-2025.07.23-0",
             time_created="2025-07-23T00:00:00Z",
         )
 
@@ -80,7 +81,7 @@ def test_pick_ubuntu_image_picks_newest_matching_version(client, admin_headers, 
                 pass
 
             def list_images(self, **kwargs):
-                assert kwargs["operating_system_version"] == "20.04"
+                assert kwargs["operating_system_version"] == "24.04"
                 return SimpleNamespace(data=[older_image, newer_image])
 
         monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
@@ -100,7 +101,7 @@ def test_pick_ubuntu_image_raises_clear_error_when_none_available(client, admin_
                 return SimpleNamespace(data=[])
 
         monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
-        with pytest.raises(OracleProvisioningError, match="20.04"):
+        with pytest.raises(OracleProvisioningError, match="24.04"):
             await oracle_service._pick_ubuntu_image({}, "ocid1.tenancy.oc1..fake")
 
     asyncio.get_event_loop().run_until_complete(scenario())
