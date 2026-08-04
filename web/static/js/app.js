@@ -1739,6 +1739,7 @@ async function loadSettings() {
         }
 
         await loadOracleSshKeys(s.oracle_ssh_key_name);
+        await loadOracleApiKeyStatus();
         toggleOracleSettings();
     } catch (error) {
         console.error('Error loading settings:', error);
@@ -1870,6 +1871,45 @@ async function refreshOracleSshKeys() {
     const currentValue = select ? select.value : null;
     await loadOracleSshKeys(currentValue);
     showToast('SSH key list refreshed', 'success');
+}
+
+async function loadOracleApiKeyStatus() {
+    const detectedBlock = document.getElementById('oracle-api-key-detected');
+    const publicKeyDisplay = document.getElementById('oracle-api-public-key-display');
+    if (!detectedBlock || !publicKeyDisplay) return;
+    try {
+        const response = await apiFetch('/settings/oracle-api-key');
+        if (!response.ok) {
+            detectedBlock.style.display = 'none';
+            return;
+        }
+        const data = await response.json();
+        detectedBlock.style.display = data.detected ? 'block' : 'none';
+        publicKeyDisplay.value = data.public_key || '';
+    } catch (error) {
+        console.error('Error checking Oracle API key status:', error);
+        detectedBlock.style.display = 'none';
+    }
+}
+
+async function importOracleApiKey() {
+    const btn = document.getElementById('oracle-api-key-import-btn');
+    if (btn) btn.disabled = true;
+    try {
+        const response = await apiFetch('/settings/oracle-api-key/import', { method: 'POST' });
+        if (response.ok) {
+            showToast('Oracle API key imported', 'success');
+            await loadSettings();
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Failed to import key', 'error');
+        }
+    } catch (error) {
+        console.error('Error importing Oracle API key:', error);
+        showToast('Error importing Oracle API key', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 function toggleOracleSettings() {
@@ -2873,3 +2913,4 @@ window.saveSettings = saveSettings;
 window.resetSettings = resetSettings;
 window.toggleOracleSettings = toggleOracleSettings;
 window.refreshOracleSshKeys = refreshOracleSshKeys;
+window.importOracleApiKey = importOracleApiKey;

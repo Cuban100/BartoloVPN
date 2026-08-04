@@ -493,6 +493,43 @@ DATABASE_URL=sqlite+aiosqlite:///./data/bartolovpn.db
     
     print("✅ .env file created successfully")
 
+def generate_oracle_api_key():
+    """Generates the RSA key pair the Settings page's Oracle Cloud
+    Integration section uses to sign requests to Oracle's API, if one
+    isn't already there. Oracle's API isn't a simple secret-string scheme
+    like AWS's - every request has to be signed with an RSA private key,
+    with the matching public key uploaded to the OCI Console - so this
+    just prepares the pair ahead of time; it's inert (never read by
+    anything) unless the operator later enables Oracle Cloud Services and
+    clicks Import in Settings. Skipped silently if openssl isn't
+    available - the operator can still paste a key manually in Settings."""
+    key_dir = Path('.ssh')
+    private_path = key_dir / 'oracle-api-private.pem'
+    public_path = key_dir / 'oracle-api-public.pem'
+
+    if private_path.exists():
+        return
+
+    if shutil.which('openssl') is None:
+        print("⚠️  openssl not found - skipping Oracle API key generation "
+              "(you can still paste a key manually in Settings, or install "
+              "openssl and re-run setup)")
+        return
+
+    key_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(['openssl', 'genrsa', '-out', str(private_path), '2048'],
+                        check=True, capture_output=True)
+        os.chmod(private_path, 0o600)
+        subprocess.run(['openssl', 'rsa', '-pubout', '-in', str(private_path), '-out', str(public_path)],
+                        check=True, capture_output=True)
+        print(f"🔑 Generated an Oracle Cloud API signing key pair in {key_dir}/ "
+              f"(only used if you enable Oracle Cloud Services in Settings)")
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode(errors='replace') if e.stderr else str(e)
+        print(f"⚠️  Failed to generate Oracle API key pair: {stderr}")
+
+
 def create_directories():
     """Create necessary directories"""
     print("\n📁 Creating directories...")
@@ -595,6 +632,10 @@ def main():
 
     # Create directories
     create_directories()
+
+    # Prepare the Oracle API signing key pair ahead of time, regardless of
+    # whether this operator will ever use it - see generate_oracle_api_key
+    generate_oracle_api_key()
 
     # Build and start services
     if build_and_start():

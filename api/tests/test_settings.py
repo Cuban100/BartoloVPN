@@ -1,6 +1,10 @@
 """Tests for the Settings page's /settings API - previously entirely
 unimplemented (the Settings page's Save button had no backend at all)."""
 
+import main
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
 
 def test_get_settings_returns_defaults_on_first_load(client, admin_headers):
     resp = client.get("/settings", headers=admin_headers)
@@ -83,3 +87,65 @@ def test_ssh_keys_endpoint_returns_empty_list_when_no_ssh_dir_mounted(client, ad
     resp = client.get("/settings/ssh-keys", headers=admin_headers)
     assert resp.status_code == 200
     assert resp.json() == {"keys": []}
+
+
+def test_oracle_api_key_status_not_detected_when_no_ssh_dir_mounted(client, admin_headers):
+    resp = client.get("/settings/oracle-api-key", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json() == {"detected": False, "public_key": None}
+
+
+def test_oracle_api_key_import_404s_when_no_key_file_present(client, admin_headers):
+    resp = client.post("/settings/oracle-api-key/import", headers=admin_headers)
+    assert resp.status_code == 404
+
+
+def test_oracle_api_key_import_non_admin_forbidden(client):
+    login = client.post("/auth/login", json={"username": "settings_test_user", "password": "SettingsTestPassw0rd!"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    resp = client.post("/settings/oracle-api-key/import", headers=headers)
+    assert resp.status_code == 403
+
+
+def test_oracle_api_key_import_reads_real_key_and_computes_fingerprint(client, admin_headers, tmp_path, monkeypatch):
+    # Generate a real RSA key pair (same shape vpn-setup.py's openssl call
+    # produces) and point the endpoint's hardcoded /ssh-keys/* paths at it
+    # via monkeypatch, since there's no real bind mount in this test env.
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_der = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    import hashlib
+    expected_fingerprint_hex = hashlib.md5(public_der).hexdigest()
+    expected_fingerprint = ":".join(expected_fingerprint_hex[i:i + 2] for i in range(0, len(expected_fingerprint_hex), 2))
+
+    private_path = tmp_path / "oracle-api-private.pem"
+    public_path = tmp_path / "oracle-api-public.pem"
+    private_path.write_bytes(private_pem)
+    public_path.write_bytes(private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ))
+
+    monkeypatch.setattr(main, "_ORACLE_API_PRIVATE_KEY_PATH", str(private_path))
+    monkeypatch.setattr(main, "_ORACLE_API_PUBLIC_KEY_PATH", str(public_path))
+
+    status_resp = client.get("/settings/oracle-api-key", headers=admin_headers)
+    assert status_resp.status_code == 200
+    status_body = status_resp.json()
+    assert status_body["detected"] is True
+    assert "BEGIN PUBLIC KEY" in status_body["public_key"]
+
+    import_resp = client.post("/settings/oracle-api-key/import", headers=admin_headers)
+    assert import_resp.status_code == 200, import_resp.text
+    body = import_resp.json()
+    assert body["oracle_api_key_configured"] is True
+    assert body["oracle_fingerprint"] == expected_fingerprint
+    # The private key content must never appear in any response
+    assert "BEGIN RSA PRIVATE KEY" not in import_resp.text

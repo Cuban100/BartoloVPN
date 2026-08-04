@@ -31,3 +31,12 @@ place both if you have them:
 
 If you don't have a `.pub` file yet, generate one from an existing
 private key with `ssh-keygen -y -f .ssh/oracle.key > .ssh/oracle.pub`.
+
+**Oracle API signing key (separate from both of the above)**:
+`vpn-setup.py` auto-generates `.ssh/oracle-api-private.pem` /
+`.ssh/oracle-api-public.pem` on every install (skipped if they already
+exist) - this pair authenticates the dashboard itself to Oracle's API
+(request signing), unrelated to logging into a VM. Uses `.pem`, not
+`.pub`, specifically so it never shows up in the VPS-access-key picker
+above. In Settings, click Import to read the private half server-side
+and store it encrypted - it never has to be pasted into the browser.

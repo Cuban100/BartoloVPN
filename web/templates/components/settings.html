@@ -107,6 +107,25 @@
                 </div>
                 <div class="form-group">
                     <label for="oracle-api-key">API Signing Key (private key)</label>
+                    <!-- Oracle authenticates every API call with an RSA-signed
+                         request, not a shared-secret string, so this is a real
+                         key pair, not a token. vpn-setup.py generates one into
+                         .ssh/ on every install; if present, Import reads the
+                         private half server-side and stores it encrypted -
+                         the key material never has to be pasted into this
+                         browser at all. The textarea below stays as a manual
+                         fallback for keys generated elsewhere. -->
+                    <div class="oracle-api-key-detected" id="oracle-api-key-detected" style="display: none;">
+                        <div class="form-help">
+                            <i class="fas fa-circle-check"></i> A key pair was generated in <code>.ssh/</code> during setup.
+                            <button type="button" class="btn-link" id="oracle-api-key-import-btn" onclick="importOracleApiKey()">Import it</button>
+                            instead of pasting one below.
+                        </div>
+                        <div class="form-group">
+                            <label for="oracle-api-public-key-display">Public key (paste this into OCI Console → User Settings → API Keys → Add API Key)</label>
+                            <textarea id="oracle-api-public-key-display" rows="4" readonly></textarea>
+                        </div>
+                    </div>
                     <textarea id="oracle-api-key" rows="4" placeholder="Leave blank to keep the currently stored key unchanged"></textarea>
                     <small class="form-help" id="oracle-api-key-status"></small>
                 </div>

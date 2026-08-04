@@ -484,6 +484,25 @@ body:has(.login-container) .footer,
     color: var(--text-primary);
 }
 
+.btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--primary-color);
+    font-size: inherit;
+    font-family: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.btn-link:hover {
+    color: var(--primary-dark);
+}
+
+.oracle-api-key-detected {
+    margin-bottom: 0.75rem;
+}
+
 .input-with-action {
     display: flex;
     gap: 0.5rem;
