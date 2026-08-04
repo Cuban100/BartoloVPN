@@ -3010,10 +3010,17 @@ async def update_settings(update: SettingsUpdate, current_user: dict = Depends(g
         ):
             value = getattr(update, field)
             if value is not None:
+                # A pasted OCID/fingerprint with an invisible trailing
+                # newline or leading space looks correct in the UI but
+                # silently fails Oracle API authentication (NotAuthenticated)
+                # - strip() only touches leading/trailing whitespace, never
+                # internal content.
+                if isinstance(value, str):
+                    value = value.strip()
                 setattr(s, field, value)
 
         if update.oracle_api_key:
-            s.oracle_api_key_encrypted = region_service.encrypt_secret(update.oracle_api_key)
+            s.oracle_api_key_encrypted = region_service.encrypt_secret(update.oracle_api_key.strip())
 
         await session.commit()
         await session.refresh(s)

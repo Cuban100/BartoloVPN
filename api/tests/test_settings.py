@@ -72,6 +72,27 @@ def test_oracle_api_key_never_returned_but_configured_flag_updates(client, admin
     assert "oracle_api_key" not in body
 
 
+def test_put_settings_strips_whitespace_from_pasted_values(client, admin_headers):
+    # An invisible trailing newline/space from copy-pasting an OCID looks
+    # correct in the UI but silently fails Oracle API authentication -
+    # this must never reach the stored value.
+    resp = client.put(
+        "/settings",
+        json={
+            "oracle_tenancy_ocid": "  ocid1.tenancy.oc1..whitespacetest\n",
+            "oracle_user_ocid": "ocid1.user.oc1..whitespacetest \t",
+            "oracle_fingerprint": " aa:bb:cc:dd \n",
+            "oracle_api_key": "\n-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n\n",
+        },
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["oracle_tenancy_ocid"] == "ocid1.tenancy.oc1..whitespacetest"
+    assert body["oracle_user_ocid"] == "ocid1.user.oc1..whitespacetest"
+    assert body["oracle_fingerprint"] == "aa:bb:cc:dd"
+
+
 def test_omitting_oracle_api_key_leaves_stored_key_unchanged(client, admin_headers):
     # From the previous test, a key is already stored - updating an
     # unrelated field without oracle_api_key must not clear it.

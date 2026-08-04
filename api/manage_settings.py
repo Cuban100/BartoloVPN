@@ -78,10 +78,16 @@ async def apply_import_data(data: dict) -> None:
         # the target install already has configured.
         for field in FIELDS:
             if field in data and data[field] is not None:
-                setattr(s, field, data[field])
+                value = data[field]
+                # Same defensive strip as PUT /settings - an invisible
+                # trailing newline in an OCID/fingerprint silently fails
+                # Oracle API authentication.
+                if isinstance(value, str):
+                    value = value.strip()
+                setattr(s, field, value)
 
         if data.get("oracle_api_key"):
-            s.oracle_api_key_encrypted = region_service.encrypt_secret(data["oracle_api_key"])
+            s.oracle_api_key_encrypted = region_service.encrypt_secret(data["oracle_api_key"].strip())
 
         await session.commit()
 
