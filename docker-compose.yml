@@ -189,6 +189,7 @@ services:
       - ./config:/config
       - ./api:/app
       - ./web:/app/web
+      - ./.ssh:/ssh-keys:ro
     restart: unless-stopped
     network_mode: "service:wireguard"
     depends_on:

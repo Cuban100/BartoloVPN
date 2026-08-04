@@ -164,8 +164,9 @@ security = HTTPBearer()
 
 # Import database models
 from database import (
-    User, VPNConfig, UserSession, UsageLog, ServerEndpoint, IPRotation, DnsQueryLog, Region,
-    AsyncSessionLocal, init_db, create_default_admin, create_default_endpoints, create_default_region, get_db
+    User, VPNConfig, UserSession, UsageLog, ServerEndpoint, IPRotation, DnsQueryLog, Region, SystemSettings,
+    AsyncSessionLocal, init_db, create_default_admin, create_default_endpoints, create_default_region,
+    create_default_settings, get_db
 )
 from ip_rotation import ip_rotation_service
 from dns_activity import dns_activity_poller, _demux_docker_log_stream
@@ -1403,6 +1404,7 @@ async def lifespan(app: FastAPI):
     await create_default_admin()
     await create_default_endpoints()
     await create_default_region()
+    await create_default_settings()
 
     # Initialize IP rotation service
     await ip_rotation_service.initialize()
@@ -2843,6 +2845,99 @@ async def check_region_health(region_id: int, current_user: dict = Depends(get_c
 
     updated = await region_service.health_check_region(region)
     return _region_out(updated)
+
+class SettingsUpdate(BaseModel):
+    timezone: Optional[str] = None
+    dns_servers: Optional[str] = None
+    encryption_level: Optional[int] = None
+    kill_switch_enabled: Optional[bool] = None
+    log_level: Optional[str] = None
+    log_retention_days: Optional[int] = None
+    # Oracle Cloud API integration (stored for a future one-click region
+    # provisioning feature - not yet implemented). oracle_api_key is only
+    # ever accepted here, never returned - see _settings_out.
+    oracle_enabled: Optional[bool] = None
+    oracle_tenancy_ocid: Optional[str] = None
+    oracle_user_ocid: Optional[str] = None
+    oracle_fingerprint: Optional[str] = None
+    oracle_api_key: Optional[str] = Field(None, description="Plaintext in the request only - encrypted before storage, and omitted from every response. Send null/omit to leave the currently stored key unchanged.")
+    oracle_region: Optional[str] = None
+    oracle_ssh_key_name: Optional[str] = None
+
+def _settings_out(s: SystemSettings) -> dict:
+    return {
+        # Read-only, sourced from config/.env, not from this table - see
+        # SystemSettings' docstring for why these aren't stored here.
+        "server_ip": settings.server_ip,
+        "domain": settings.domain,
+        "timezone": s.timezone,
+        "dns_servers": s.dns_servers,
+        "encryption_level": s.encryption_level,
+        "kill_switch_enabled": s.kill_switch_enabled,
+        "log_level": s.log_level,
+        "log_retention_days": s.log_retention_days,
+        "oracle_enabled": s.oracle_enabled,
+        "oracle_tenancy_ocid": s.oracle_tenancy_ocid,
+        "oracle_user_ocid": s.oracle_user_ocid,
+        "oracle_fingerprint": s.oracle_fingerprint,
+        "oracle_api_key_configured": bool(s.oracle_api_key_encrypted),
+        "oracle_region": s.oracle_region,
+        "oracle_ssh_key_name": s.oracle_ssh_key_name,
+    }
+
+@app.get("/settings")
+async def get_settings(current_user: dict = Depends(get_current_user)):
+    async with AsyncSessionLocal() as session:
+        s = await session.get(SystemSettings, 1)
+        if s is None:
+            # Shouldn't happen (create_default_settings seeds this at
+            # startup), but don't 500 on a missing singleton row.
+            s = SystemSettings(id=1)
+            session.add(s)
+            await session.commit()
+            await session.refresh(s)
+        return _settings_out(s)
+
+@app.put("/settings")
+async def update_settings(update: SettingsUpdate, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    async with AsyncSessionLocal() as session:
+        s = await session.get(SystemSettings, 1)
+        if s is None:
+            s = SystemSettings(id=1)
+            session.add(s)
+
+        for field in (
+            "timezone", "dns_servers", "encryption_level", "kill_switch_enabled",
+            "log_level", "log_retention_days", "oracle_enabled",
+            "oracle_tenancy_ocid", "oracle_user_ocid", "oracle_fingerprint",
+            "oracle_region", "oracle_ssh_key_name",
+        ):
+            value = getattr(update, field)
+            if value is not None:
+                setattr(s, field, value)
+
+        if update.oracle_api_key:
+            s.oracle_api_key_encrypted = region_service.encrypt_secret(update.oracle_api_key)
+
+        await session.commit()
+        await session.refresh(s)
+        return _settings_out(s)
+
+@app.get("/settings/ssh-keys")
+async def list_ssh_keys(current_user: dict = Depends(get_current_user)):
+    """Lists public keys available under the repo's .ssh/ folder (bind-mounted
+    read-only into this container as /ssh-keys), so the Oracle settings UI
+    can offer a picker instead of the operator typing a path by hand."""
+    ssh_dir = "/ssh-keys"
+    keys = []
+    if os.path.isdir(ssh_dir):
+        for fname in sorted(os.listdir(ssh_dir)):
+            if fname.endswith(".pub"):
+                keys.append(fname[:-4])
+    return {"keys": keys}
 
 @app.get("/users/{user_id}/configs")
 async def get_user_configs(

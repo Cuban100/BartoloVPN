@@ -81,6 +81,49 @@
             </div>
         </div>
         
+        <div class="section-header">
+            <h3>Oracle Cloud Integration</h3>
+        </div>
+
+        <div class="settings-form">
+            <div class="form-group">
+                <label for="oracle-enabled">Use Oracle Cloud Services</label>
+                <input type="checkbox" id="oracle-enabled" onchange="toggleOracleSettings()">
+                <span class="checkbox-label">Store Oracle Cloud API credentials for future region provisioning</span>
+            </div>
+
+            <div id="oracle-settings-fields" style="display: none;">
+                <div class="form-group">
+                    <label for="oracle-tenancy-ocid">Tenancy OCID</label>
+                    <input type="text" id="oracle-tenancy-ocid" placeholder="ocid1.tenancy.oc1..">
+                </div>
+                <div class="form-group">
+                    <label for="oracle-user-ocid">User OCID</label>
+                    <input type="text" id="oracle-user-ocid" placeholder="ocid1.user.oc1..">
+                </div>
+                <div class="form-group">
+                    <label for="oracle-fingerprint">API Key Fingerprint</label>
+                    <input type="text" id="oracle-fingerprint" placeholder="aa:bb:cc:dd:...">
+                </div>
+                <div class="form-group">
+                    <label for="oracle-api-key">API Signing Key (private key)</label>
+                    <textarea id="oracle-api-key" rows="4" placeholder="Leave blank to keep the currently stored key unchanged"></textarea>
+                    <small class="form-help" id="oracle-api-key-status"></small>
+                </div>
+                <div class="form-group">
+                    <label for="oracle-region">Home Region</label>
+                    <input type="text" id="oracle-region" placeholder="e.g. us-ashburn-1">
+                </div>
+                <div class="form-group">
+                    <label for="oracle-ssh-key">SSH Key (from .ssh/)</label>
+                    <select id="oracle-ssh-key">
+                        <option value="">No keys detected under .ssh/</option>
+                    </select>
+                    <small class="form-help">Detected automatically from the repo's .ssh/ folder - place a key there and reload this page to pick it up.</small>
+                </div>
+            </div>
+        </div>
+
         <div class="form-actions">
             <button class="btn btn-primary" onclick="saveSettings()">
                 <i class="fas fa-save"></i> Save Settings

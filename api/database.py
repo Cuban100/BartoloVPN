@@ -163,6 +163,37 @@ class Region(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class SystemSettings(Base):
+    """Singleton row (always id=1) of the editable settings shown on the
+    Settings page. Server IP/domain are deliberately NOT here - those come
+    from .env/config.py and are shown read-only in the UI, not persisted
+    here, since changing them requires a real docker-compose restart with
+    a different .env, not a database update."""
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, default=1)
+    timezone = Column(String(50), default="UTC")
+    dns_servers = Column(String(255), default="1.1.1.1,8.8.8.8")
+    encryption_level = Column(Integer, default=256)
+    kill_switch_enabled = Column(Boolean, default=True)
+    log_level = Column(String(20), default="INFO")
+    log_retention_days = Column(Integer, default=30)
+
+    # Oracle Cloud API integration (for future one-click region
+    # provisioning - not yet implemented, this just stores the
+    # credentials). api_key_encrypted is Fernet-encrypted at rest via
+    # region_service.encrypt_secret, same mechanism as region agent keys -
+    # never returned in plaintext by any API response.
+    oracle_enabled = Column(Boolean, default=False)
+    oracle_tenancy_ocid = Column(String(255), nullable=True)
+    oracle_user_ocid = Column(String(255), nullable=True)
+    oracle_fingerprint = Column(String(255), nullable=True)
+    oracle_api_key_encrypted = Column(Text, nullable=True)
+    oracle_region = Column(String(50), nullable=True)
+    oracle_ssh_key_name = Column(String(255), nullable=True)
+
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Import configuration
 from config import settings
 
@@ -296,3 +327,12 @@ async def create_default_region():
             ))
             await session.commit()
             print("Created default local region")
+
+async def create_default_settings():
+    """Seed the singleton SystemSettings row (id=1) if it doesn't exist yet."""
+    async with AsyncSessionLocal() as session:
+        existing = await session.get(SystemSettings, 1)
+        if not existing:
+            session.add(SystemSettings(id=1))
+            await session.commit()
+            print("Created default system settings")

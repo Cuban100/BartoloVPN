@@ -892,6 +892,8 @@ function switchTab(tabName) {
         loadDashboardData();
     } else if (tabName === 'regions') {
         loadRegionsAdminTable();
+    } else if (tabName === 'settings') {
+        loadSettings();
     } else {
         // Stop monitoring when switching away from monitoring tab
         cleanupMonitoring();
@@ -1696,6 +1698,145 @@ async function deleteRegion(regionId, slug) {
         console.error('Error deleting region:', error);
         showToast('Error deleting region', 'error');
     }
+}
+
+// ========== SETTINGS ==========
+
+async function loadSettings() {
+    try {
+        const response = await apiFetch('/settings');
+        if (!response.ok) {
+            showToast('Failed to load settings', 'error');
+            return;
+        }
+        const s = await response.json();
+
+        const serverIpEl = document.getElementById('server-ip');
+        if (serverIpEl) serverIpEl.value = s.server_ip || '';
+        const domainEl = document.getElementById('domain');
+        if (domainEl) domainEl.value = s.domain || '';
+
+        setValueIfPresent('timezone', s.timezone);
+        setValueIfPresent('dns-servers', s.dns_servers);
+        setValueIfPresent('encryption-level', String(s.encryption_level));
+        setCheckedIfPresent('kill-switch', s.kill_switch_enabled);
+        setValueIfPresent('log-level', s.log_level);
+        setValueIfPresent('log-retention', s.log_retention_days);
+
+        setCheckedIfPresent('oracle-enabled', s.oracle_enabled);
+        setValueIfPresent('oracle-tenancy-ocid', s.oracle_tenancy_ocid);
+        setValueIfPresent('oracle-user-ocid', s.oracle_user_ocid);
+        setValueIfPresent('oracle-fingerprint', s.oracle_fingerprint);
+        setValueIfPresent('oracle-region', s.oracle_region);
+
+        const apiKeyStatus = document.getElementById('oracle-api-key-status');
+        if (apiKeyStatus) {
+            apiKeyStatus.textContent = s.oracle_api_key_configured
+                ? 'A key is already stored - leave blank to keep it, or paste a new one to replace it.'
+                : 'No key stored yet.';
+        }
+
+        await loadOracleSshKeys(s.oracle_ssh_key_name);
+        toggleOracleSettings();
+    } catch (error) {
+        console.error('Error loading settings:', error);
+        showToast('Error loading settings', 'error');
+    }
+}
+
+function setValueIfPresent(elementId, value) {
+    const el = document.getElementById(elementId);
+    if (el && value !== null && value !== undefined) el.value = value;
+}
+
+function setCheckedIfPresent(elementId, value) {
+    const el = document.getElementById(elementId);
+    if (el && value !== null && value !== undefined) el.checked = value;
+}
+
+async function loadOracleSshKeys(selectedKeyName) {
+    const select = document.getElementById('oracle-ssh-key');
+    if (!select) return;
+    try {
+        const response = await apiFetch('/settings/ssh-keys');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.keys || data.keys.length === 0) {
+            select.innerHTML = '<option value="">No keys detected under .ssh/</option>';
+            return;
+        }
+        select.innerHTML = data.keys.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join('');
+        if (selectedKeyName && data.keys.includes(selectedKeyName)) {
+            select.value = selectedKeyName;
+        }
+    } catch (error) {
+        console.error('Error loading SSH keys:', error);
+    }
+}
+
+function toggleOracleSettings() {
+    const checkbox = document.getElementById('oracle-enabled');
+    const fields = document.getElementById('oracle-settings-fields');
+    if (checkbox && fields) {
+        fields.style.display = checkbox.checked ? 'block' : 'none';
+    }
+}
+
+async function saveSettings() {
+    const payload = {
+        timezone: getValue('timezone'),
+        dns_servers: getValue('dns-servers'),
+        encryption_level: parseInt(getValue('encryption-level'), 10) || undefined,
+        kill_switch_enabled: getChecked('kill-switch'),
+        log_level: getValue('log-level'),
+        log_retention_days: parseInt(getValue('log-retention'), 10) || undefined,
+        oracle_enabled: getChecked('oracle-enabled'),
+        oracle_tenancy_ocid: getValue('oracle-tenancy-ocid'),
+        oracle_user_ocid: getValue('oracle-user-ocid'),
+        oracle_fingerprint: getValue('oracle-fingerprint'),
+        oracle_region: getValue('oracle-region'),
+        oracle_ssh_key_name: getValue('oracle-ssh-key'),
+    };
+    // Only send the API key if the operator actually typed a new one -
+    // an empty field means "leave the stored key unchanged", not "clear it".
+    const apiKeyValue = getValue('oracle-api-key');
+    if (apiKeyValue) {
+        payload.oracle_api_key = apiKeyValue;
+    }
+
+    try {
+        const response = await apiFetch('/settings', {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+            showToast('Settings saved successfully', 'success');
+            const apiKeyField = document.getElementById('oracle-api-key');
+            if (apiKeyField) apiKeyField.value = '';
+            loadSettings();
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Failed to save settings', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        showToast('Error saving settings', 'error');
+    }
+}
+
+function resetSettings() {
+    if (!confirm('Discard unsaved changes and reload the last saved settings?')) return;
+    loadSettings();
+}
+
+function getValue(elementId) {
+    const el = document.getElementById(elementId);
+    return el ? el.value : null;
+}
+
+function getChecked(elementId) {
+    const el = document.getElementById(elementId);
+    return el ? el.checked : null;
 }
 
 // ========== USER MANAGEMENT FUNCTIONS ==========
@@ -2630,3 +2771,6 @@ window.validateUninstallIKEv2Confirmation = validateUninstallIKEv2Confirmation;
 window.removeAllIKEv2Clients = removeAllIKEv2Clients;
 window.uninstallIKEv2 = uninstallIKEv2;
 window.closeModal = closeModal;
+window.saveSettings = saveSettings;
+window.resetSettings = resetSettings;
+window.toggleOracleSettings = toggleOracleSettings;

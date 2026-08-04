@@ -39,12 +39,22 @@ def encrypt_agent_key(agent_key: str) -> str:
     return _fernet().encrypt(agent_key.encode()).decode()
 
 
+# Generic aliases - the encryption here isn't actually specific to region
+# agent keys, it's just "encrypt an arbitrary secret at rest using
+# REGION_AGENT_ENCRYPTION_KEY." Reused for other secrets (e.g. Settings'
+# Oracle Cloud API key) instead of deriving a second Fernet key for them.
+encrypt_secret = encrypt_agent_key
+
+
 def decrypt_agent_key(agent_key_encrypted: str) -> str:
     try:
         return _fernet().decrypt(agent_key_encrypted.encode()).decode()
     except InvalidToken:
         # Never include the ciphertext or key material in the raised error.
         raise ValueError("Could not decrypt stored agent key - REGION_AGENT_ENCRYPTION_KEY may have changed")
+
+
+decrypt_secret = decrypt_agent_key
 
 
 async def get_region_by_slug(slug: str) -> Optional[Region]:
