@@ -109,8 +109,13 @@ def test_pick_ubuntu_image_raises_clear_error_when_no_minimal_variant_exists(cli
                 return SimpleNamespace(data=[full_image_only])
 
         monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
-        with pytest.raises(OracleProvisioningError, match="Minimal"):
+        # Regression: the error must show what actually IS available
+        # (real incident: 3 non-Minimal 24.04 images existed for the
+        # shape, but the error alone didn't say so, forcing a manual
+        # Console check to find out) instead of just saying "not found".
+        with pytest.raises(OracleProvisioningError, match="Minimal") as exc_info:
             await oracle_service._pick_ubuntu_image({}, "ocid1.tenancy.oc1..fake")
+        assert "Canonical-Ubuntu-24.04-2025.07.23-0" in str(exc_info.value)
 
     asyncio.get_event_loop().run_until_complete(scenario())
 

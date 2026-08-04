@@ -306,9 +306,11 @@ async def _pick_ubuntu_image(config: dict, compartment_id: str) -> str:
     )).data
     minimal_images = [img for img in images if "minimal" in (img.display_name or "").lower()]
     if not minimal_images:
+        available_names = ", ".join(img.display_name for img in images) or "none"
         raise OracleProvisioningError(
             f"No available 'Canonical Ubuntu {UBUNTU_VERSION} Minimal' image found for shape "
-            f"{ORACLE_SHAPE} in this region (found {len(images)} other Ubuntu {UBUNTU_VERSION} image(s))"
+            f"{ORACLE_SHAPE} in this region - available Ubuntu {UBUNTU_VERSION} image(s) for "
+            f"this shape: {available_names}"
         )
     minimal_images.sort(key=lambda img: img.time_created, reverse=True)
     return minimal_images[0].id
