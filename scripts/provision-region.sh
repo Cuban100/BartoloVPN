@@ -82,9 +82,9 @@ AGENT_HOSTNAME="${AGENT_HOSTNAME:-$DEFAULT_HOSTNAME}"
 read -rp "WireGuard port [51820]: " WIREGUARD_PORT
 WIREGUARD_PORT="${WIREGUARD_PORT:-51820}"
 
-log_step "Installing Docker, the Compose plugin, and ufw..."
+log_step "Installing Docker, the Compose plugin, ufw, and jq..."
 apt-get update -qq
-apt-get install -y -qq docker.io docker-compose-plugin ufw curl >/dev/null
+apt-get install -y -qq docker.io docker-compose-plugin ufw curl jq >/dev/null
 systemctl enable --now docker >/dev/null 2>&1 || true
 
 AGENT_API_KEY=$(openssl rand -hex 32)
@@ -160,23 +160,97 @@ else
     log_info "Agent is healthy."
 fi
 
+print_manual_block() {
+    echo
+    echo "=================================================================="
+    echo " Paste these into the central dashboard's Regions tab -> Add Region"
+    echo " form. The agent key below is shown ONCE and is not logged anywhere -"
+    echo " copy it now."
+    echo "=================================================================="
+    echo "  Slug:                     $REGION_SLUG"
+    echo "  Display name:             $REGION_DISPLAY_NAME"
+    echo "  Country code:             $REGION_COUNTRY_CODE"
+    echo "  City:                     ${REGION_CITY:-(none)}"
+    echo "  Agent URL:                https://$AGENT_HOSTNAME"
+    echo "  Agent key:                $AGENT_API_KEY"
+    echo "  WireGuard endpoint host:  $SERVER_IP"
+    echo "  WireGuard endpoint port:  $WIREGUARD_PORT"
+    echo "=================================================================="
+}
+
 echo
-echo "=================================================================="
-echo " Paste these into the central dashboard's Regions tab -> Add Region"
-echo " form. The agent key below is shown ONCE and is not logged anywhere -"
-echo " copy it now."
-echo "=================================================================="
-echo "  Slug:                     $REGION_SLUG"
-echo "  Display name:             $REGION_DISPLAY_NAME"
-echo "  Country code:             $REGION_COUNTRY_CODE"
-echo "  City:                     ${REGION_CITY:-(none)}"
-echo "  Agent URL:                https://$AGENT_HOSTNAME"
-echo "  Agent key:                $AGENT_API_KEY"
-echo "  WireGuard endpoint host:  $SERVER_IP"
-echo "  WireGuard endpoint port:  $WIREGUARD_PORT"
-echo "=================================================================="
-echo
-log_warn "It can take a minute for Caddy to obtain its Let's Encrypt certificate the first time https://$AGENT_HOSTNAME is hit - if Add Region fails immediately, wait ~30s and retry."
+log_step "Last step: register this region with your BartoloVPN dashboard."
+log_info "Needs your dashboard's admin login once, just to make the API call - nothing is stored on this VPS."
+read -rp "Auto-register with your dashboard now? [Y/n]: " AUTO_REGISTER
+AUTO_REGISTER="${AUTO_REGISTER:-y}"
+
+REGISTERED=false
+if [[ "$AUTO_REGISTER" =~ ^[Yy] ]]; then
+    read -rp "Dashboard URL (e.g. https://bartolovpn.caveplex.com): " DASHBOARD_URL
+    DASHBOARD_URL="${DASHBOARD_URL%/}"
+    read -rp "Dashboard admin username: " DASHBOARD_ADMIN_USER
+    read -rsp "Dashboard admin password: " DASHBOARD_ADMIN_PASS
+    echo
+
+    if [ -z "$DASHBOARD_URL" ] || [ -z "$DASHBOARD_ADMIN_USER" ] || [ -z "$DASHBOARD_ADMIN_PASS" ]; then
+        log_warn "Missing dashboard URL/username/password - skipping auto-registration."
+    else
+        log_step "Logging in to $DASHBOARD_URL..."
+        LOGIN_RESPONSE=$(curl -s --max-time 10 -X POST "$DASHBOARD_URL/auth/login" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg u "$DASHBOARD_ADMIN_USER" --arg p "$DASHBOARD_ADMIN_PASS" '{username:$u,password:$p}')")
+        DASHBOARD_ADMIN_PASS=""  # clear from memory as soon as it's been used
+        TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.access_token // empty')
+
+        if [ -z "$TOKEN" ]; then
+            log_error "Login failed: $(echo "$LOGIN_RESPONSE" | jq -r '.detail // "unknown error"')"
+            log_warn "Falling back to manual registration - use the values below."
+        else
+            log_step "Registering region '$REGION_SLUG'..."
+            REGION_BODY=$(jq -n \
+                --arg slug "$REGION_SLUG" \
+                --arg display_name "$REGION_DISPLAY_NAME" \
+                --arg country_code "$REGION_COUNTRY_CODE" \
+                --arg city "$REGION_CITY" \
+                --arg agent_url "https://$AGENT_HOSTNAME" \
+                --arg agent_key "$AGENT_API_KEY" \
+                --arg wireguard_endpoint_host "$SERVER_IP" \
+                --argjson wireguard_endpoint_port "$WIREGUARD_PORT" \
+                '{slug:$slug, display_name:$display_name, country_code:$country_code, city:$city, agent_url:$agent_url, agent_key:$agent_key, wireguard_endpoint_host:$wireguard_endpoint_host, wireguard_endpoint_port:$wireguard_endpoint_port}')
+
+            # Caddy may still be obtaining its first Let's Encrypt cert -
+            # retry a few times before giving up, instead of failing on one
+            # bad-timing attempt.
+            for attempt in 1 2 3 4 5 6; do
+                REGISTER_RESPONSE=$(curl -s --max-time 15 -o /tmp/register_response.json -w "%{http_code}" -X POST "$DASHBOARD_URL/regions" \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer $TOKEN" \
+                    -d "$REGION_BODY")
+                if [ "$REGISTER_RESPONSE" = "200" ]; then
+                    REGISTERED=true
+                    break
+                fi
+                log_warn "Attempt $attempt/6 failed (HTTP $REGISTER_RESPONSE) - $(jq -r '.detail // "unknown error"' /tmp/register_response.json 2>/dev/null). Retrying in 10s..."
+                sleep 10
+            done
+            rm -f /tmp/register_response.json
+
+            if [ "$REGISTERED" = "true" ]; then
+                log_info "Region '$REGION_SLUG' registered successfully - it's already live in your dashboard's Regions tab and the WireGuard peer-creation region picker."
+            else
+                log_error "Auto-registration failed after 6 attempts. Falling back to manual registration - use the values below."
+            fi
+        fi
+    fi
+else
+    log_info "Skipping auto-registration - use the values below to register manually."
+fi
+
+if [ "$REGISTERED" != "true" ]; then
+    print_manual_block
+    log_warn "It can take a minute for Caddy to obtain its Let's Encrypt certificate the first time https://$AGENT_HOSTNAME is hit - if Add Region fails immediately, wait ~30s and retry."
+fi
+
 if [ -n "$ORACLE_SECURITY_LIST_REMINDER" ]; then
     echo
     log_warn "REMINDER: $ORACLE_SECURITY_LIST_REMINDER"
