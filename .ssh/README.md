@@ -17,3 +17,17 @@ chmod 600 .ssh/oracle.key
 
 ssh -i .ssh/oracle.key ubuntu@<your-vps-ip>
 ```
+
+**Settings page auto-detection**: the SSH Key picker under Oracle Cloud
+Integration only looks for the **public** half - a file ending in `.pub`
+(this is the key Oracle injects into a new VM, not the one you use to
+SSH into it). It has nothing to do with the private-key filename above;
+place both if you have them:
+
+```bash
+.ssh/oracle.key       # private - yours, for `ssh -i`, ignored by the picker
+.ssh/oracle.pub       # public - shows up in the Settings page as "oracle"
+```
+
+If you don't have a `.pub` file yet, generate one from an existing
+private key with `ssh-keygen -y -f .ssh/oracle.key > .ssh/oracle.pub`.
