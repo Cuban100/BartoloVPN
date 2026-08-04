@@ -287,21 +287,31 @@ async def _list_availability_domains(config: dict, compartment_id: str) -> list:
     return [ad.name for ad in ads]
 
 
+UBUNTU_VERSION = "24.04"
+
 async def _pick_ubuntu_image(config: dict, compartment_id: str) -> str:
+    """Pins to Ubuntu 24.04 Minimal specifically, rather than whatever
+    happens to be the most-recently-published Canonical Ubuntu image for
+    the shape - "newest wins" was untested and could just as easily land
+    on a variant that behaves differently from the one actually verified
+    to work (the operator's own manual, working launch used 24.04)."""
     compute = oci.core.ComputeClient(config)
     images = (await _run_sync(
         compute.list_images,
         compartment_id=compartment_id,
         operating_system="Canonical Ubuntu",
+        operating_system_version=UBUNTU_VERSION,
         shape=ORACLE_SHAPE,
         lifecycle_state="AVAILABLE",
     )).data
-    if not images:
+    minimal_images = [img for img in images if "minimal" in (img.display_name or "").lower()]
+    if not minimal_images:
         raise OracleProvisioningError(
-            f"No available Ubuntu images found for shape {ORACLE_SHAPE} in this region"
+            f"No available 'Canonical Ubuntu {UBUNTU_VERSION} Minimal' image found for shape "
+            f"{ORACLE_SHAPE} in this region (found {len(images)} other Ubuntu {UBUNTU_VERSION} image(s))"
         )
-    images.sort(key=lambda img: img.time_created, reverse=True)
-    return images[0].id
+    minimal_images.sort(key=lambda img: img.time_created, reverse=True)
+    return minimal_images[0].id
 
 
 async def terminate_instance(settings_row: SystemSettings, instance_id: str) -> None:
@@ -460,6 +470,17 @@ async def provision_oracle_region(
                 + "; ".join(launch_errors)
             )
 
+        # Record the instance ID the moment it exists, before anything else
+        # that could fail (waiting for a public IP, waiting for the agent).
+        # A real production incident: this used to only get saved after
+        # _wait_for_public_ip also succeeded, so a timeout there left a
+        # real, running, quota-consuming Oracle instance with literally no
+        # record of its ID anywhere - undeletable via the dashboard, and
+        # every retry created another one, silently exhausting the tenant's
+        # entire Always Free instance quota (2 cores) after just two failed
+        # attempts, which then made every subsequent attempt fail too.
+        await _set_fields(oracle_instance_id=instance_id)
+
         public_ip = await _wait_for_public_ip(config, compartment_id, instance_id)
         agent_url = f"https://{public_ip.replace('.', '-')}.sslip.io"
 
@@ -467,7 +488,6 @@ async def provision_oracle_region(
             wireguard_endpoint_host=public_ip,
             agent_url=agent_url,
             agent_key_encrypted=region_service.encrypt_agent_key(agent_api_key),
-            oracle_instance_id=instance_id,
         )
 
         await _wait_for_agent_healthy(slug, agent_url, agent_api_key)

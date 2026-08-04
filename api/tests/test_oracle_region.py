@@ -53,6 +53,68 @@ def test_service_error_message_includes_operation_name():
     assert "[" not in message_no_op
 
 
+def test_pick_ubuntu_image_filters_to_minimal_variant(client, admin_headers, monkeypatch):
+    """Pins to Ubuntu 24.04 Minimal specifically rather than trusting
+    whatever list_images happens to return newest - untested "pick the
+    latest" logic is exactly the kind of thing that silently regresses
+    when Oracle publishes a new image, and the operator's own manual,
+    confirmed-working launch used this exact variant."""
+    async def scenario():
+        full_image = SimpleNamespace(
+            id="ocid1.image.oc1..full2404",
+            display_name="Canonical-Ubuntu-24.04-2025.07.23-0",
+            time_created="2025-07-23T00:00:00Z",
+        )
+        minimal_image_older = SimpleNamespace(
+            id="ocid1.image.oc1..minimalold",
+            display_name="Canonical-Ubuntu-24.04-Minimal-2025.06.01-0",
+            time_created="2025-06-01T00:00:00Z",
+        )
+        minimal_image_newer = SimpleNamespace(
+            id="ocid1.image.oc1..minimalnew",
+            display_name="Canonical-Ubuntu-24.04-Minimal-2025.07.23-0",
+            time_created="2025-07-23T00:00:00Z",
+        )
+
+        class FakeComputeClient:
+            def __init__(self, config):
+                pass
+
+            def list_images(self, **kwargs):
+                assert kwargs["operating_system_version"] == "24.04"
+                return SimpleNamespace(data=[full_image, minimal_image_older, minimal_image_newer])
+
+        monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
+        image_id = await oracle_service._pick_ubuntu_image({}, "ocid1.tenancy.oc1..fake")
+        # Picked the newest *Minimal* image, ignoring the non-Minimal one
+        # even though it's also a valid, newer-or-equal 24.04 image.
+        assert image_id == "ocid1.image.oc1..minimalnew"
+
+    asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_pick_ubuntu_image_raises_clear_error_when_no_minimal_variant_exists(client, admin_headers, monkeypatch):
+    async def scenario():
+        full_image_only = SimpleNamespace(
+            id="ocid1.image.oc1..fullonly",
+            display_name="Canonical-Ubuntu-24.04-2025.07.23-0",
+            time_created="2025-07-23T00:00:00Z",
+        )
+
+        class FakeComputeClient:
+            def __init__(self, config):
+                pass
+
+            def list_images(self, **kwargs):
+                return SimpleNamespace(data=[full_image_only])
+
+        monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
+        with pytest.raises(OracleProvisioningError, match="Minimal"):
+            await oracle_service._pick_ubuntu_image({}, "ocid1.tenancy.oc1..fake")
+
+    asyncio.get_event_loop().run_until_complete(scenario())
+
+
 def test_fire_and_forget_task_survives_garbage_collection():
     """Regression test for a real production bug: asyncio.create_task()
     only keeps a *weak* reference to the returned Task internally - one
@@ -550,6 +612,74 @@ def test_provision_oracle_region_marks_failed_when_agent_never_comes_up(client, 
             # should be populated even though the overall result is a failure
             assert updated.wireguard_endpoint_host == "198.51.100.2"
             assert updated.oracle_instance_id == "ocid1.instance.oc1..timeout"
+
+    asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_provision_oracle_region_records_instance_id_even_if_public_ip_wait_fails(client, admin_headers, monkeypatch):
+    """Regression test for the actual real-world incident: launch_instance
+    succeeded (a real Oracle instance now exists and is running), but
+    _wait_for_public_ip itself failed/timed out before oracle_instance_id
+    was ever saved - with no ID recorded anywhere, that instance became
+    permanently untrackable and undeletable via the dashboard. Every
+    retry created another one, silently exhausting the tenant's entire
+    Always Free instance quota after just two failed attempts. The ID
+    must be saved the moment the instance exists, not after later steps
+    also succeed."""
+    async def scenario():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-lifecycle-ipwaitfail",
+                display_name="Lifecycle IP Wait Fail",
+                country_code="US",
+                is_local=False,
+                wireguard_endpoint_host="",
+                is_active=False,
+                health_status="provisioning",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+            region_id = region.id
+
+        await _fully_configure_oracle_settings()
+        async with AsyncSessionLocal() as session:
+            settings_row = await session.get(SystemSettings, 1)
+
+        async def fake_ensure_network(config, compartment_id):
+            return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..fake"
+
+        async def fake_list_ads(config, compartment_id):
+            return ["fake-AD-1"]
+
+        async def fake_pick_image(config, compartment_id):
+            return "ocid1.image.oc1..fake"
+
+        async def fake_wait_for_public_ip_times_out(config, compartment_id, instance_id):
+            raise OracleProvisioningError("Instance launched but no public IP appeared within 180s")
+
+        class FakeComputeClient:
+            def __init__(self, config):
+                pass
+
+            def launch_instance(self, details):
+                return SimpleNamespace(data=SimpleNamespace(id="ocid1.instance.oc1..orphanwatch"))
+
+        monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
+        monkeypatch.setattr(oracle_service, "_list_availability_domains", fake_list_ads)
+        monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
+        monkeypatch.setattr(oracle_service, "_wait_for_public_ip", fake_wait_for_public_ip_times_out)
+        monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClient)
+
+        await oracle_service.provision_oracle_region(region_id, "or-lifecycle-ipwaitfail", "Lifecycle IP Wait Fail", 51820, settings_row)
+
+        async with AsyncSessionLocal() as session:
+            updated = await session.get(Region, region_id)
+            assert updated.health_status == "failed"
+            # The critical assertion: even though everything after launch
+            # failed, the real instance's ID must still be recorded so
+            # DELETE /regions can actually find and terminate it.
+            assert updated.oracle_instance_id == "ocid1.instance.oc1..orphanwatch"
 
     asyncio.get_event_loop().run_until_complete(scenario())
 
