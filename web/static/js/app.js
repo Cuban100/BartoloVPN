@@ -2120,6 +2120,59 @@ function resetSettings() {
     loadSettings();
 }
 
+async function exportSettings() {
+    try {
+        const response = await apiFetch('/settings/export');
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            showToast(data.detail || 'Failed to export settings', 'error');
+            return;
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'bartolovpn-settings-backup.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('Settings exported - the file contains your Oracle API key in plaintext if one is configured, keep it safe', 'success');
+    } catch (error) {
+        console.error('Error exporting settings:', error);
+        showToast('Error exporting settings', 'error');
+    }
+}
+
+async function importSettingsFile(event) {
+    const file = event.target.files[0];
+    event.target.value = '';  // allow re-selecting the same file later
+    if (!file) return;
+
+    if (!confirm('Import settings from this file? This will overwrite any matching fields currently configured.')) {
+        return;
+    }
+
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const response = await apiFetch('/settings/import', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (response.ok) {
+            showToast('Settings imported successfully', 'success');
+            loadSettings();
+        } else {
+            showToast(result.detail || 'Failed to import settings', 'error');
+        }
+    } catch (error) {
+        console.error('Error importing settings:', error);
+        showToast('Error importing settings - is this a valid settings export file?', 'error');
+    }
+}
+
 function getValue(elementId) {
     const el = document.getElementById(elementId);
     return el ? el.value : null;
@@ -3066,6 +3119,8 @@ window.uninstallIKEv2 = uninstallIKEv2;
 window.closeModal = closeModal;
 window.saveSettings = saveSettings;
 window.resetSettings = resetSettings;
+window.exportSettings = exportSettings;
+window.importSettingsFile = importSettingsFile;
 window.toggleOracleSettings = toggleOracleSettings;
 window.refreshOracleSshKeys = refreshOracleSshKeys;
 window.importOracleApiKey = importOracleApiKey;

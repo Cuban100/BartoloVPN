@@ -177,6 +177,7 @@ from region_service import region_health_poller
 from region_client import RegionClient
 import oracle_service
 from oracle_service import OracleProvisioningError
+import manage_settings
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -3081,6 +3082,44 @@ async def import_oracle_api_key(current_user: dict = Depends(get_current_user)):
         s.oracle_fingerprint = fingerprint
         await session.commit()
         await session.refresh(s)
+        return _settings_out(s)
+
+@app.get("/settings/export")
+async def export_settings_route(current_user: dict = Depends(get_current_user)):
+    """Downloads the Settings row as JSON - built after a real incident
+    where two separate clones of this repo each ran their own database,
+    so Settings entered via one dashboard never showed up in the other.
+    See manage_settings.py's module docstring for why the Oracle API key
+    is included in plaintext (needed to re-encrypt correctly on import
+    into a different install)."""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    data = await manage_settings.build_export_data()
+    if data is None:
+        raise HTTPException(status_code=404, detail="No settings to export yet")
+
+    return JSONResponse(
+        content=data,
+        headers={"Content-Disposition": "attachment; filename=bartolovpn-settings-backup.json"},
+    )
+
+@app.post("/settings/import")
+async def import_settings_route(data: Dict[str, Any], current_user: dict = Depends(get_current_user)):
+    """Restores a Settings export produced by GET /settings/export (or
+    manage_settings.py export) - only overwrites fields present in the
+    file, matching PUT /settings' existing "leave unchanged if omitted"
+    semantics."""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        await manage_settings.apply_import_data(data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not import settings: {e}")
+
+    async with AsyncSessionLocal() as session:
+        s = await session.get(SystemSettings, 1)
         return _settings_out(s)
 
 @app.get("/users/{user_id}/configs")

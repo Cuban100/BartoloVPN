@@ -162,3 +162,56 @@ def test_export_with_no_settings_row_does_not_crash(client, tmp_path):
         assert not out_path.exists()
 
     asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_export_route_returns_downloadable_json(client, admin_headers):
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(_set_settings(
+        timezone="Pacific/Auckland",
+        oracle_api_key_encrypted=region_service.encrypt_secret("ROUTE-EXPORT-SECRET"),
+    ))
+
+    resp = client.get("/settings/export", headers=admin_headers)
+    assert resp.status_code == 200
+    assert "attachment" in resp.headers.get("content-disposition", "")
+    body = resp.json()
+    assert body["timezone"] == "Pacific/Auckland"
+    assert body["oracle_api_key"] == "ROUTE-EXPORT-SECRET"
+
+
+def _non_admin_headers(client):
+    login = client.post("/auth/login", json={"username": "settings_test_user", "password": "SettingsTestPassw0rd!"})
+    if login.status_code != 200:
+        client.post("/auth/register", json={"username": "settings_test_user", "password": "SettingsTestPassw0rd!"})
+        login = client.post("/auth/login", json={"username": "settings_test_user", "password": "SettingsTestPassw0rd!"})
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+def test_export_route_non_admin_forbidden(client):
+    resp = client.get("/settings/export", headers=_non_admin_headers(client))
+    assert resp.status_code == 403
+
+
+def test_import_route_applies_fields_and_reencrypts_key(client, admin_headers):
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(_set_settings(timezone="UTC", oracle_api_key_encrypted=None))
+
+    resp = client.post(
+        "/settings/import",
+        json={"timezone": "America/Denver", "oracle_api_key": "ROUTE-IMPORT-SECRET"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["timezone"] == "America/Denver"
+    assert body["oracle_api_key_configured"] is True
+    # The raw key must never appear in the response
+    assert "ROUTE-IMPORT-SECRET" not in resp.text
+
+    s = asyncio.get_event_loop().run_until_complete(_get_settings())
+    assert region_service.decrypt_secret(s.oracle_api_key_encrypted) == "ROUTE-IMPORT-SECRET"
+
+
+def test_import_route_non_admin_forbidden(client):
+    resp = client.post("/settings/import", json={"timezone": "UTC"}, headers=_non_admin_headers(client))
+    assert resp.status_code == 403

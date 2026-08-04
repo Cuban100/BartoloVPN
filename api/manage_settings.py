@@ -27,6 +27,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -44,12 +45,14 @@ FIELDS = (
 )
 
 
-async def export_settings(path: str) -> None:
+async def build_export_data() -> Optional[dict]:
+    """Core export logic, reused by both the CLI below and the Settings
+    page's Export button (GET /settings/export in api/main.py). Returns
+    None if there's no settings row yet."""
     async with AsyncSessionLocal() as session:
         s = await session.get(SystemSettings, 1)
         if s is None:
-            print("No settings row found - nothing to export.")
-            return
+            return None
 
         data = {field: getattr(s, field) for field in FIELDS}
         data["oracle_api_key"] = (
@@ -57,23 +60,12 @@ async def export_settings(path: str) -> None:
             if s.oracle_api_key_encrypted else None
         )
         data["exported_at"] = datetime.utcnow().isoformat() + "Z"
-
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-    os.chmod(path, 0o600)
-
-    print(f"Exported settings to {path}")
-    if data["oracle_api_key"]:
-        print("WARNING: this file contains your Oracle API private key in "
-              "PLAINTEXT (needed to re-encrypt correctly on import into a "
-              "different install). Treat it like the key itself - delete "
-              "it once you've imported it elsewhere, never commit it.")
+        return data
 
 
-async def import_settings(path: str) -> None:
-    with open(path) as f:
-        data = json.load(f)
-
+async def apply_import_data(data: dict) -> None:
+    """Core import logic, reused by both the CLI below and the Settings
+    page's Import button (POST /settings/import in api/main.py)."""
     async with AsyncSessionLocal() as session:
         s = await session.get(SystemSettings, 1)
         if s is None:
@@ -93,6 +85,29 @@ async def import_settings(path: str) -> None:
 
         await session.commit()
 
+
+async def export_settings(path: str) -> None:
+    data = await build_export_data()
+    if data is None:
+        print("No settings row found - nothing to export.")
+        return
+
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    os.chmod(path, 0o600)
+
+    print(f"Exported settings to {path}")
+    if data["oracle_api_key"]:
+        print("WARNING: this file contains your Oracle API private key in "
+              "PLAINTEXT (needed to re-encrypt correctly on import into a "
+              "different install). Treat it like the key itself - delete "
+              "it once you've imported it elsewhere, never commit it.")
+
+
+async def import_settings(path: str) -> None:
+    with open(path) as f:
+        data = json.load(f)
+    await apply_import_data(data)
     print(f"Imported settings from {path}")
 
 
