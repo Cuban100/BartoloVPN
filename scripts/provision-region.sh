@@ -140,14 +140,21 @@ case "$CONTINENT_CHOICE" in
 esac
 echo
 
-read -rp "Region slug (lowercase, e.g. ${REGION_SLUG_DEFAULT:-de-fra1}) [$REGION_SLUG_DEFAULT]: " REGION_SLUG
-REGION_SLUG="${REGION_SLUG:-$REGION_SLUG_DEFAULT}"
-read -rp "Display name [$REGION_DISPLAY_DEFAULT]: " REGION_DISPLAY_NAME
-REGION_DISPLAY_NAME="${REGION_DISPLAY_NAME:-$REGION_DISPLAY_DEFAULT}"
-read -rp "Country code (2 letters) [$REGION_COUNTRY_DEFAULT]: " REGION_COUNTRY_CODE
-REGION_COUNTRY_CODE="${REGION_COUNTRY_CODE:-$REGION_COUNTRY_DEFAULT}"
-read -rp "City [$REGION_CITY_DEFAULT]: " REGION_CITY
-REGION_CITY="${REGION_CITY:-$REGION_CITY_DEFAULT}"
+if [ -n "$REGION_SLUG_DEFAULT" ]; then
+    # A continent/city was picked (not "Custom") - use those values
+    # directly, no re-confirmation needed.
+    REGION_SLUG="$REGION_SLUG_DEFAULT"
+    REGION_DISPLAY_NAME="$REGION_DISPLAY_DEFAULT"
+    REGION_COUNTRY_CODE="$REGION_COUNTRY_DEFAULT"
+    REGION_CITY="$REGION_CITY_DEFAULT"
+    log_info "Using $REGION_DISPLAY_NAME ($REGION_SLUG)"
+else
+    # "Custom" - there's nothing to default to, so these have to be typed.
+    read -rp "Region slug (lowercase, e.g. de-fra1): " REGION_SLUG
+    read -rp "Display name (e.g. Germany - Frankfurt): " REGION_DISPLAY_NAME
+    read -rp "Country code (2 letters, e.g. DE): " REGION_COUNTRY_CODE
+    read -rp "City (optional, press enter to skip): " REGION_CITY
+fi
 
 if [ -z "$REGION_SLUG" ] || [ -z "$REGION_DISPLAY_NAME" ] || [ -z "$REGION_COUNTRY_CODE" ]; then
     log_error "Region slug, display name, and country code are required - can't continue."
