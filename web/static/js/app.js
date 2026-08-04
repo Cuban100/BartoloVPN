@@ -1749,7 +1749,13 @@ async function loadRegionsAdminTable() {
             return;
         }
         tableBody.innerHTML = regions.map(r => {
-            const location = r.city ? `${r.display_name} (${r.city}, ${r.country_code})` : `${r.display_name} (${r.country_code})`;
+            // country_code isn't a real, known value for the local server
+            // (it's just a hardcoded "US" placeholder in create_default_region,
+            // not derived from any actual IP geolocation) - only show it for
+            // real remote regions, where the operator actually chose it.
+            const location = r.is_local
+                ? r.display_name
+                : (r.city ? `${r.display_name} (${r.city}, ${r.country_code})` : `${r.display_name} (${r.country_code})`);
             const healthClass = r.health_status === 'healthy' ? 'status-active'
                 : r.health_status === 'provisioning' ? 'status-provisioning'
                 : 'status-inactive';
