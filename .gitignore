@@ -240,3 +240,9 @@ settings.local.*
 # keeps the empty folder itself present in the repo.
 .ssh/*
 !.ssh/README.md
+
+# manage_settings.py export output - contains the Oracle API key in
+# plaintext (see its own docstring for why). Safety net for the default
+# /app path landing in api/ on the host; never commit one of these.
+settings-backup*.json
+api/settings-backup*.json
