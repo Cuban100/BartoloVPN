@@ -119,15 +119,18 @@
                         <div class="form-help">
                             <i class="fas fa-circle-check"></i> A key pair was generated in <code>.ssh/</code> during setup.
                             <button type="button" class="btn-link" id="oracle-api-key-import-btn" onclick="importOracleApiKey()">Import it</button>
-                            instead of pasting one below.
                         </div>
                         <div class="form-group">
                             <label for="oracle-api-public-key-display">Public key (paste this into OCI Console → User Settings → API Keys → Add API Key)</label>
                             <textarea id="oracle-api-public-key-display" rows="4" readonly></textarea>
                         </div>
                     </div>
-                    <textarea id="oracle-api-key" rows="4" placeholder="Leave blank to keep the currently stored key unchanged"></textarea>
-                    <small class="form-help" id="oracle-api-key-status"></small>
+                    <!-- Read-only status by default - not an input the operator
+                         needs to fill in. The paste textarea is a fallback for
+                         keys generated outside .ssh/, only shown on request. -->
+                    <div class="form-help" id="oracle-api-key-status"></div>
+                    <button type="button" class="btn-link" id="oracle-api-key-manual-toggle" onclick="toggleOracleApiKeyManualEntry()">Paste a key manually instead</button>
+                    <textarea id="oracle-api-key" rows="4" placeholder="Paste a private key here" style="display: none;"></textarea>
                 </div>
                 <div class="form-group">
                     <label for="oracle-region-trigger">Home Region</label>

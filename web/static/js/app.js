@@ -1733,9 +1733,9 @@ async function loadSettings() {
 
         const apiKeyStatus = document.getElementById('oracle-api-key-status');
         if (apiKeyStatus) {
-            apiKeyStatus.textContent = s.oracle_api_key_configured
-                ? 'A key is already stored - leave blank to keep it, or paste a new one to replace it.'
-                : 'No key stored yet.';
+            apiKeyStatus.innerHTML = s.oracle_api_key_configured
+                ? '<i class="fas fa-circle-check"></i> A key is stored.'
+                : '<i class="fas fa-circle-xmark"></i> No key stored yet.';
         }
 
         await loadOracleSshKeys(s.oracle_ssh_key_name);
@@ -1907,7 +1907,7 @@ async function importOracleApiKey() {
             setValueIfPresent('oracle-fingerprint', data.oracle_fingerprint);
             const apiKeyStatus = document.getElementById('oracle-api-key-status');
             if (apiKeyStatus) {
-                apiKeyStatus.textContent = 'A key is already stored - leave blank to keep it, or paste a new one to replace it.';
+                apiKeyStatus.innerHTML = '<i class="fas fa-circle-check"></i> A key is stored.';
             }
             showToast('Oracle API key imported - fingerprint filled in. Click Save Settings to keep everything.', 'success');
         } else {
@@ -1919,6 +1919,16 @@ async function importOracleApiKey() {
     } finally {
         if (btn) btn.disabled = false;
     }
+}
+
+function toggleOracleApiKeyManualEntry() {
+    const textarea = document.getElementById('oracle-api-key');
+    const toggleBtn = document.getElementById('oracle-api-key-manual-toggle');
+    if (!textarea || !toggleBtn) return;
+    const showing = textarea.style.display !== 'none';
+    textarea.style.display = showing ? 'none' : 'block';
+    toggleBtn.textContent = showing ? 'Paste a key manually instead' : 'Cancel';
+    if (showing) textarea.value = '';
 }
 
 function toggleOracleSettings() {
@@ -2923,3 +2933,4 @@ window.resetSettings = resetSettings;
 window.toggleOracleSettings = toggleOracleSettings;
 window.refreshOracleSshKeys = refreshOracleSshKeys;
 window.importOracleApiKey = importOracleApiKey;
+window.toggleOracleApiKeyManualEntry = toggleOracleApiKeyManualEntry;
