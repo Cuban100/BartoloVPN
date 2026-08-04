@@ -924,6 +924,8 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing elements...');
     initThemeToggle();
     setupCustomSelect('oracle-region');
+    setupCustomSelect('region-country-code');
+    initRegionCountryAutofill();
 
     // Initialize DOM elements
     loginScreen = document.getElementById('login-screen');
@@ -1566,7 +1568,35 @@ function showAddRegionModal() {
         modal.style.display = 'flex';
         const form = document.getElementById('add-region-form');
         if (form) form.reset();
+        // form.reset() resets the hidden <select>'s value but not the
+        // custom dropdown's visible trigger label - sync it back manually.
+        syncCustomSelectLabel('region-country-code');
     }
+}
+
+// Suggests Display Name/Slug from the picked country so the operator isn't
+// typing both a name and a code by hand - only fills fields that are still
+// empty, so it never clobbers something already typed.
+function initRegionCountryAutofill() {
+    const countrySelect = document.getElementById('region-country-code');
+    if (!countrySelect) return;
+    countrySelect.addEventListener('change', () => {
+        const countryName = countrySelect.selectedOptions[0]?.textContent || '';
+        const countryCode = countrySelect.value;
+        if (!countryCode) return;
+
+        const displayNameEl = document.getElementById('region-display-name');
+        const cityEl = document.getElementById('region-city');
+        const slugEl = document.getElementById('region-slug');
+
+        if (displayNameEl && !displayNameEl.value) {
+            const city = cityEl ? cityEl.value.trim() : '';
+            displayNameEl.value = city ? `${countryName} - ${city}` : countryName;
+        }
+        if (slugEl && !slugEl.value) {
+            slugEl.value = countryCode.toLowerCase();
+        }
+    });
 }
 
 function closeAddRegionModal() {

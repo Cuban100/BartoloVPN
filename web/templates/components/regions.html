@@ -52,8 +52,63 @@
                     <input type="text" id="region-display-name" name="region-display-name" required placeholder="e.g. Germany - Frankfurt">
                 </div>
                 <div class="form-group">
-                    <label for="region-country-code">Country Code</label>
-                    <input type="text" id="region-country-code" name="region-country-code" required minlength="2" maxlength="2" placeholder="e.g. DE">
+                    <label for="region-country-code-trigger">Country</label>
+                    <!-- Custom-rendered dropdown, not a native <select> - see the
+                         Oracle Home Region field in settings.html for why (Linux
+                         Chrome can't CSS-theme a native select's open popup at
+                         all). The hidden select below stays the source of truth
+                         for the option list and submitted value. -->
+                    <div class="custom-dropdown" id="region-country-code-dropdown">
+                        <button type="button" class="custom-dropdown-trigger" id="region-country-code-trigger">
+                            <span id="region-country-code-trigger-label">Select a country...</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="custom-dropdown-panel" id="region-country-code-panel" hidden></div>
+                    </div>
+                    <select id="region-country-code" name="region-country-code" required style="display: none;">
+                        <option value="">Select a country...</option>
+                        <optgroup label="Americas">
+                            <option value="US">United States</option>
+                            <option value="CA">Canada</option>
+                            <option value="MX">Mexico</option>
+                            <option value="BR">Brazil</option>
+                            <option value="CL">Chile</option>
+                            <option value="CO">Colombia</option>
+                            <option value="AR">Argentina</option>
+                        </optgroup>
+                        <optgroup label="Europe">
+                            <option value="GB">United Kingdom</option>
+                            <option value="DE">Germany</option>
+                            <option value="FR">France</option>
+                            <option value="NL">Netherlands</option>
+                            <option value="ES">Spain</option>
+                            <option value="IT">Italy</option>
+                            <option value="CH">Switzerland</option>
+                            <option value="SE">Sweden</option>
+                            <option value="PL">Poland</option>
+                            <option value="IE">Ireland</option>
+                            <option value="PT">Portugal</option>
+                            <option value="RO">Romania</option>
+                        </optgroup>
+                        <optgroup label="Middle East / Africa">
+                            <option value="AE">United Arab Emirates</option>
+                            <option value="SA">Saudi Arabia</option>
+                            <option value="IL">Israel</option>
+                            <option value="ZA">South Africa</option>
+                            <option value="EG">Egypt</option>
+                            <option value="TR">Turkey</option>
+                        </optgroup>
+                        <optgroup label="Asia Pacific">
+                            <option value="JP">Japan</option>
+                            <option value="KR">South Korea</option>
+                            <option value="SG">Singapore</option>
+                            <option value="IN">India</option>
+                            <option value="ID">Indonesia</option>
+                            <option value="AU">Australia</option>
+                            <option value="HK">Hong Kong</option>
+                            <option value="TW">Taiwan</option>
+                        </optgroup>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="region-city">City (optional)</label>
