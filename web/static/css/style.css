@@ -1,5 +1,13 @@
 /* BartoloVPN - Main Styles */
 :root {
+    /* Chromium picks native form-control chrome (select popups,
+       scrollbars, etc.) based on color-scheme, not page background -
+       without this the select's open dropdown panel renders with the
+       browser's light native widget skin regardless of our option
+       background-color/color rules, which is why setting those alone
+       didn't fix the washed-out region picker. */
+    color-scheme: dark;
+
     --primary-color: #6366f1;
     --primary-dark: #4f46e5;
     --secondary-color: #10b981;
@@ -49,6 +57,8 @@
    initThemeToggle/toggleTheme). Defaults to the original dark palette
    above when no attribute is set. */
 :root[data-theme="light"] {
+    color-scheme: light;
+
     --bg-primary: #f8fafc;
     --bg-secondary: #ffffff;
     --bg-tertiary: #e2e8f0;
