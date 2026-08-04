@@ -272,12 +272,19 @@ async def _ensure_network(config: dict, compartment_id: str) -> Tuple[str, str]:
     return vcn.id, subnet.id
 
 
-async def _pick_availability_domain(config: dict, compartment_id: str) -> str:
+async def _list_availability_domains(config: dict, compartment_id: str) -> list:
+    """Returns all AD names, not just one - Always Free shape capacity is
+    unevenly distributed across a region's ADs and shifts over time, so
+    launch_instance needs to be able to try more than the first one (see
+    provision_oracle_region's launch loop). Confirmed in production: a
+    real tenancy had capacity in AD-3 but not AD-1, and picking only the
+    first AD caused every attempt to fail with a misleadingly generic
+    NotAuthorizedOrNotFound instead of a capacity-specific error."""
     identity = oci.identity.IdentityClient(config)
     ads = (await _run_sync(identity.list_availability_domains, compartment_id=compartment_id)).data
     if not ads:
         raise OracleProvisioningError("Oracle returned no availability domains for this region")
-    return ads[0].name
+    return [ad.name for ad in ads]
 
 
 async def _pick_ubuntu_image(config: dict, compartment_id: str) -> str:
@@ -396,7 +403,7 @@ async def provision_oracle_region(
         compartment_id = settings_row.oracle_tenancy_ocid  # root compartment
 
         vcn_id, subnet_id = await _ensure_network(config, compartment_id)
-        availability_domain = await _pick_availability_domain(config, compartment_id)
+        availability_domains = await _list_availability_domains(config, compartment_id)
         image_id = await _pick_ubuntu_image(config, compartment_id)
 
         agent_api_key = secrets.token_hex(32)
@@ -406,43 +413,52 @@ async def provision_oracle_region(
             metadata["ssh_authorized_keys"] = ssh_public_key
 
         compute = oci.core.ComputeClient(config)
-        logger.info(
-            f"Oracle region '{slug}': launching instance with "
-            f"compartment_id={compartment_id} availability_domain={availability_domain!r} "
-            f"shape={ORACLE_SHAPE} image_id={image_id} subnet_id={subnet_id}"
-        )
-        try:
-            launch_response = await _run_sync(
-                compute.launch_instance,
-                oci.core.models.LaunchInstanceDetails(
-                    compartment_id=compartment_id,
-                    availability_domain=availability_domain,
-                    shape=ORACLE_SHAPE,
-                    display_name=display_name,
-                    source_details=oci.core.models.InstanceSourceViaImageDetails(
-                        source_type="image",
-                        image_id=image_id,
-                    ),
-                    create_vnic_details=oci.core.models.CreateVnicDetails(
-                        subnet_id=subnet_id,
-                        assign_public_ip=True,
-                    ),
-                    metadata=metadata,
-                ),
+        instance_id = None
+        launch_errors = []
+        for availability_domain in availability_domains:
+            logger.info(
+                f"Oracle region '{slug}': trying to launch in "
+                f"availability_domain={availability_domain!r} shape={ORACLE_SHAPE} "
+                f"image_id={image_id} subnet_id={subnet_id}"
             )
-        except oci.exceptions.ServiceError as e:
-            # A NotAuthorizedOrNotFound here is genuinely ambiguous
-            # between "no permission" and "one of these IDs doesn't
-            # exist/isn't valid" - surfacing the exact values used (not
-            # secret - AD names, image/subnet OCIDs, shape) directly in
-            # the stored error means the operator doesn't have to fetch
-            # container logs separately to compare against a manual
-            # Console launch that used different values and worked.
+            try:
+                launch_response = await _run_sync(
+                    compute.launch_instance,
+                    oci.core.models.LaunchInstanceDetails(
+                        compartment_id=compartment_id,
+                        availability_domain=availability_domain,
+                        shape=ORACLE_SHAPE,
+                        display_name=display_name,
+                        source_details=oci.core.models.InstanceSourceViaImageDetails(
+                            source_type="image",
+                            image_id=image_id,
+                        ),
+                        create_vnic_details=oci.core.models.CreateVnicDetails(
+                            subnet_id=subnet_id,
+                            assign_public_ip=True,
+                        ),
+                        metadata=metadata,
+                    ),
+                )
+                instance_id = launch_response.data.id
+                break
+            except oci.exceptions.ServiceError as e:
+                # Always Free shape capacity is unevenly distributed across
+                # a region's ADs and shifts over time - confirmed in
+                # production that the first AD in the list can reject a
+                # launch (as a generic NotAuthorizedOrNotFound, not even a
+                # capacity-specific error) while a later one succeeds with
+                # the exact same image/subnet/shape. Try the rest before
+                # giving up, rather than failing on the first rejection.
+                launch_errors.append(f"{availability_domain}: {_service_error_message(e)}")
+                continue
+
+        if instance_id is None:
             raise OracleProvisioningError(
-                f"{_service_error_message(e)} (used: availability_domain={availability_domain!r}, "
-                f"shape={ORACLE_SHAPE}, image_id={image_id}, subnet_id={subnet_id})"
+                f"Instance launch was rejected in every availability domain tried "
+                f"(shape={ORACLE_SHAPE}, image_id={image_id}, subnet_id={subnet_id}): "
+                + "; ".join(launch_errors)
             )
-        instance_id = launch_response.data.id
 
         public_ip = await _wait_for_public_ip(config, compartment_id, instance_id)
         agent_url = f"https://{public_ip.replace('.', '-')}.sslip.io"

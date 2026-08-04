@@ -263,8 +263,8 @@ def test_provision_oracle_region_full_lifecycle_success(client, admin_headers, m
         async def fake_ensure_network(config, compartment_id):
             return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..fake"
 
-        async def fake_pick_ad(config, compartment_id):
-            return "fake-AD-1"
+        async def fake_list_ads(config, compartment_id):
+            return ["fake-AD-1"]
 
         async def fake_pick_image(config, compartment_id):
             return "ocid1.image.oc1..fake"
@@ -283,7 +283,7 @@ def test_provision_oracle_region_full_lifecycle_success(client, admin_headers, m
                 return SimpleNamespace(data=SimpleNamespace(id="ocid1.instance.oc1..lifecycle"))
 
         monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
-        monkeypatch.setattr(oracle_service, "_pick_availability_domain", fake_pick_ad)
+        monkeypatch.setattr(oracle_service, "_list_availability_domains", fake_list_ads)
         monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
         monkeypatch.setattr(oracle_service, "_wait_for_public_ip", fake_wait_for_public_ip)
         monkeypatch.setattr(oracle_service, "_wait_for_agent_healthy", fake_wait_healthy)
@@ -298,6 +298,86 @@ def test_provision_oracle_region_full_lifecycle_success(client, admin_headers, m
             assert updated.wireguard_endpoint_host == "203.0.113.42"
             assert updated.agent_url == "https://203-0-113-42.sslip.io"
             assert updated.oracle_instance_id == "ocid1.instance.oc1..lifecycle"
+
+    asyncio.get_event_loop().run_until_complete(scenario())
+
+
+def test_provision_oracle_region_retries_next_ad_when_first_rejects_launch(client, admin_headers, monkeypatch):
+    """Regression test for the actual root cause found in production:
+    Always Free shape capacity is unevenly distributed across a region's
+    availability domains and shifts over time - a real tenancy had
+    capacity in AD-3 but not AD-1, and picking only the first AD in the
+    list made every attempt fail. Must try the rest before giving up,
+    rather than hardcoding a specific AD (which wouldn't generalize to
+    other operators' tenancies, or stay correct as capacity shifts)."""
+    async def scenario():
+        async with AsyncSessionLocal() as session:
+            region = Region(
+                slug="or-lifecycle-adretry",
+                display_name="Lifecycle AD Retry",
+                country_code="US",
+                is_local=False,
+                wireguard_endpoint_host="",
+                is_active=False,
+                health_status="provisioning",
+            )
+            session.add(region)
+            await session.commit()
+            await session.refresh(region)
+            region_id = region.id
+
+        await _fully_configure_oracle_settings()
+        async with AsyncSessionLocal() as session:
+            settings_row = await session.get(SystemSettings, 1)
+
+        async def fake_ensure_network(config, compartment_id):
+            return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..fake"
+
+        async def fake_list_ads(config, compartment_id):
+            return ["fake-AD-1", "fake-AD-2", "fake-AD-3"]
+
+        async def fake_pick_image(config, compartment_id):
+            return "ocid1.image.oc1..fake"
+
+        async def fake_wait_for_public_ip(config, compartment_id, instance_id):
+            return "203.0.113.77"
+
+        async def fake_wait_healthy(slug, agent_url, agent_key):
+            return None
+
+        attempted_ads = []
+
+        class FakeComputeClientRejectsFirstTwo:
+            def __init__(self, config):
+                pass
+
+            def launch_instance(self, details):
+                attempted_ads.append(details.availability_domain)
+                if details.availability_domain != "fake-AD-3":
+                    raise oci.exceptions.ServiceError(
+                        status=404, code="NotAuthorizedOrNotFound", headers={},
+                        message="Authorization failed or requested resource not found.",
+                        operation_name="launch_instance",
+                    )
+                return SimpleNamespace(data=SimpleNamespace(id="ocid1.instance.oc1..adretry"))
+
+        monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
+        monkeypatch.setattr(oracle_service, "_list_availability_domains", fake_list_ads)
+        monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
+        monkeypatch.setattr(oracle_service, "_wait_for_public_ip", fake_wait_for_public_ip)
+        monkeypatch.setattr(oracle_service, "_wait_for_agent_healthy", fake_wait_healthy)
+        monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClientRejectsFirstTwo)
+
+        await oracle_service.provision_oracle_region(region_id, "or-lifecycle-adretry", "Lifecycle AD Retry", 51820, settings_row)
+
+        # Tried AD-1 and AD-2 (both rejected) before succeeding on AD-3
+        assert attempted_ads == ["fake-AD-1", "fake-AD-2", "fake-AD-3"]
+
+        async with AsyncSessionLocal() as session:
+            updated = await session.get(Region, region_id)
+            assert updated.health_status == "healthy"
+            assert updated.is_active is True
+            assert updated.oracle_instance_id == "ocid1.instance.oc1..adretry"
 
     asyncio.get_event_loop().run_until_complete(scenario())
 
@@ -433,8 +513,8 @@ def test_provision_oracle_region_marks_failed_when_agent_never_comes_up(client, 
         async def fake_ensure_network(config, compartment_id):
             return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..fake"
 
-        async def fake_pick_ad(config, compartment_id):
-            return "fake-AD-1"
+        async def fake_list_ads(config, compartment_id):
+            return ["fake-AD-1"]
 
         async def fake_pick_image(config, compartment_id):
             return "ocid1.image.oc1..fake"
@@ -453,7 +533,7 @@ def test_provision_oracle_region_marks_failed_when_agent_never_comes_up(client, 
                 return SimpleNamespace(data=SimpleNamespace(id="ocid1.instance.oc1..timeout"))
 
         monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
-        monkeypatch.setattr(oracle_service, "_pick_availability_domain", fake_pick_ad)
+        monkeypatch.setattr(oracle_service, "_list_availability_domains", fake_list_ads)
         monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
         monkeypatch.setattr(oracle_service, "_wait_for_public_ip", fake_wait_for_public_ip)
         monkeypatch.setattr(oracle_service, "_wait_for_agent_healthy", fake_wait_healthy_times_out)
@@ -550,8 +630,8 @@ def test_provision_oracle_region_launch_instance_error_includes_diagnostic_param
         async def fake_ensure_network(config, compartment_id):
             return "ocid1.vcn.oc1..fake", "ocid1.subnet.oc1..diagnostictest"
 
-        async def fake_pick_ad(config, compartment_id):
-            return "fake-AD-2"
+        async def fake_list_ads(config, compartment_id):
+            return ["fake-AD-2"]
 
         async def fake_pick_image(config, compartment_id):
             return "ocid1.image.oc1..diagnostictest"
@@ -568,7 +648,7 @@ def test_provision_oracle_region_launch_instance_error_includes_diagnostic_param
                 )
 
         monkeypatch.setattr(oracle_service, "_ensure_network", fake_ensure_network)
-        monkeypatch.setattr(oracle_service, "_pick_availability_domain", fake_pick_ad)
+        monkeypatch.setattr(oracle_service, "_list_availability_domains", fake_list_ads)
         monkeypatch.setattr(oracle_service, "_pick_ubuntu_image", fake_pick_image)
         monkeypatch.setattr(oracle_service.oci.core, "ComputeClient", FakeComputeClientLaunchFails)
 
