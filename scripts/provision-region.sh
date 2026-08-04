@@ -56,10 +56,99 @@ else
 fi
 echo
 
-read -rp "Region slug (lowercase, e.g. de-fra1): " REGION_SLUG
-read -rp "Display name (e.g. Germany - Frankfurt): " REGION_DISPLAY_NAME
-read -rp "Country code (2 letters, e.g. DE): " REGION_COUNTRY_CODE
-read -rp "City (optional, press enter to skip): " REGION_CITY
+echo "Which continent should this region's exit location appear to be in?"
+echo "  1) Europe"
+echo "  2) Asia"
+echo "  3) South America"
+echo "  4) Oceania"
+echo "  5) Africa"
+echo "  6) North America"
+echo "  7) Custom (type everything in manually)"
+read -rp "Choice [1-7]: " CONTINENT_CHOICE
+
+REGION_SLUG_DEFAULT=""
+REGION_DISPLAY_DEFAULT=""
+REGION_COUNTRY_DEFAULT=""
+REGION_CITY_DEFAULT=""
+
+pick_city() {
+    # $1 = numbered menu text (already echoed by caller), reads choice into
+    # REGION_SLUG_DEFAULT/REGION_DISPLAY_DEFAULT/REGION_COUNTRY_DEFAULT/REGION_CITY_DEFAULT
+    read -rp "Choice: " CITY_CHOICE
+}
+
+case "$CONTINENT_CHOICE" in
+    1)
+        echo "Which city?"
+        echo "  1) Frankfurt, Germany"
+        echo "  2) Amsterdam, Netherlands"
+        echo "  3) London, United Kingdom"
+        pick_city
+        case "$CITY_CHOICE" in
+            1) REGION_SLUG_DEFAULT="de-fra1"; REGION_DISPLAY_DEFAULT="Germany - Frankfurt"; REGION_COUNTRY_DEFAULT="DE"; REGION_CITY_DEFAULT="Frankfurt" ;;
+            2) REGION_SLUG_DEFAULT="nl-ams1"; REGION_DISPLAY_DEFAULT="Netherlands - Amsterdam"; REGION_COUNTRY_DEFAULT="NL"; REGION_CITY_DEFAULT="Amsterdam" ;;
+            3) REGION_SLUG_DEFAULT="gb-lon1"; REGION_DISPLAY_DEFAULT="United Kingdom - London"; REGION_COUNTRY_DEFAULT="GB"; REGION_CITY_DEFAULT="London" ;;
+            *) log_error "Invalid choice"; exit 1 ;;
+        esac
+        ;;
+    2)
+        echo "Which city?"
+        echo "  1) Singapore"
+        echo "  2) Tokyo, Japan"
+        echo "  3) Bangalore, India"
+        pick_city
+        case "$CITY_CHOICE" in
+            1) REGION_SLUG_DEFAULT="sg-sin1"; REGION_DISPLAY_DEFAULT="Singapore"; REGION_COUNTRY_DEFAULT="SG"; REGION_CITY_DEFAULT="Singapore" ;;
+            2) REGION_SLUG_DEFAULT="jp-nrt1"; REGION_DISPLAY_DEFAULT="Japan - Tokyo"; REGION_COUNTRY_DEFAULT="JP"; REGION_CITY_DEFAULT="Tokyo" ;;
+            3) REGION_SLUG_DEFAULT="in-blr1"; REGION_DISPLAY_DEFAULT="India - Bangalore"; REGION_COUNTRY_DEFAULT="IN"; REGION_CITY_DEFAULT="Bangalore" ;;
+            *) log_error "Invalid choice"; exit 1 ;;
+        esac
+        ;;
+    3)
+        REGION_SLUG_DEFAULT="br-sao1"; REGION_DISPLAY_DEFAULT="Brazil - Sao Paulo"; REGION_COUNTRY_DEFAULT="BR"; REGION_CITY_DEFAULT="Sao Paulo"
+        ;;
+    4)
+        REGION_SLUG_DEFAULT="au-syd1"; REGION_DISPLAY_DEFAULT="Australia - Sydney"; REGION_COUNTRY_DEFAULT="AU"; REGION_CITY_DEFAULT="Sydney"
+        ;;
+    5)
+        REGION_SLUG_DEFAULT="za-jnb1"; REGION_DISPLAY_DEFAULT="South Africa - Johannesburg"; REGION_COUNTRY_DEFAULT="ZA"; REGION_CITY_DEFAULT="Johannesburg"
+        ;;
+    6)
+        echo "Which city?"
+        echo "  1) Ashburn, Virginia (US East)"
+        echo "  2) San Francisco, California (US West)"
+        echo "  3) Toronto, Canada"
+        pick_city
+        case "$CITY_CHOICE" in
+            1) REGION_SLUG_DEFAULT="us-ash1"; REGION_DISPLAY_DEFAULT="United States - Ashburn"; REGION_COUNTRY_DEFAULT="US"; REGION_CITY_DEFAULT="Ashburn" ;;
+            2) REGION_SLUG_DEFAULT="us-sfo1"; REGION_DISPLAY_DEFAULT="United States - San Francisco"; REGION_COUNTRY_DEFAULT="US"; REGION_CITY_DEFAULT="San Francisco" ;;
+            3) REGION_SLUG_DEFAULT="ca-tor1"; REGION_DISPLAY_DEFAULT="Canada - Toronto"; REGION_COUNTRY_DEFAULT="CA"; REGION_CITY_DEFAULT="Toronto" ;;
+            *) log_error "Invalid choice"; exit 1 ;;
+        esac
+        ;;
+    7)
+        : # all defaults stay blank - the prompts below just become plain manual entry
+        ;;
+    *)
+        log_error "Invalid choice"
+        exit 1
+        ;;
+esac
+echo
+
+read -rp "Region slug (lowercase, e.g. ${REGION_SLUG_DEFAULT:-de-fra1}) [$REGION_SLUG_DEFAULT]: " REGION_SLUG
+REGION_SLUG="${REGION_SLUG:-$REGION_SLUG_DEFAULT}"
+read -rp "Display name [$REGION_DISPLAY_DEFAULT]: " REGION_DISPLAY_NAME
+REGION_DISPLAY_NAME="${REGION_DISPLAY_NAME:-$REGION_DISPLAY_DEFAULT}"
+read -rp "Country code (2 letters) [$REGION_COUNTRY_DEFAULT]: " REGION_COUNTRY_CODE
+REGION_COUNTRY_CODE="${REGION_COUNTRY_CODE:-$REGION_COUNTRY_DEFAULT}"
+read -rp "City [$REGION_CITY_DEFAULT]: " REGION_CITY
+REGION_CITY="${REGION_CITY:-$REGION_CITY_DEFAULT}"
+
+if [ -z "$REGION_SLUG" ] || [ -z "$REGION_DISPLAY_NAME" ] || [ -z "$REGION_COUNTRY_CODE" ]; then
+    log_error "Region slug, display name, and country code are required - can't continue."
+    exit 1
+fi
 
 DETECTED_IP=$(curl -s --max-time 5 ifconfig.me || true)
 if [ -n "$DETECTED_IP" ]; then
