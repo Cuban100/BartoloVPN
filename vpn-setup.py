@@ -406,6 +406,8 @@ def create_env_file(config):
     region_agent_encryption_key = secrets.token_hex(32)
     print("🔑 Generated a random REGION_AGENT_ENCRYPTION_KEY")
 
+    compose_project_name = "bartolovpn"
+
     ikev2_psk = generate_ikev2_psk()
     print(f"🔑 Generated IKEv2 pre-shared key: {ikev2_psk}")
 
@@ -467,6 +469,10 @@ JWT_EXPIRE_MINUTES=10080
 # Encrypts remote-region agent API keys at rest (multi-region feature,
 # see api/region_service.py). Auto-generated per install.
 REGION_AGENT_ENCRYPTION_KEY={region_agent_encryption_key}
+
+# Fixed Docker Compose project name, so container names stay clean
+# (bartolovpn-wireguard, not a directory-derived or numbered name).
+COMPOSE_PROJECT_NAME={compose_project_name}
 
 # Network Configuration
 LOCAL_IP={config['server_ip']}
