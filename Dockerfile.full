@@ -7,7 +7,9 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies
+# Install system dependencies. gcc is needed because psutil==5.9.6 (in
+# api/requirements.txt) has no prebuilt aarch64/cp311 wheel, so pip falls
+# back to compiling it from source on that platform.
 RUN apt-get update && apt-get install -y \
     wireguard-tools \
     openvpn \
@@ -17,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     git \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
