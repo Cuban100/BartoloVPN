@@ -866,57 +866,15 @@ async function loadDnsLeakCheck(protocol) {
         const response = await apiFetch('/api/dns/leak-check');
         if (!response.ok) return;
         const data = await response.json();
-        renderDnsLeakCheck(protocol, data[protocol]);
+        updateDnsLeakSummary(protocol, data[protocol]);
     } catch (error) {
         console.error('Error loading DNS leak check:', error);
     }
 }
 
-const DNS_LEAK_STATUS_LABELS = {
-    ok: 'Protected',
-    leak_suspected: 'Possible Leak',
-    idle: 'Idle',
-    config_mismatch: 'Config Mismatch',
-};
-const DNS_LEAK_STATUS_CLASSES = {
-    ok: 'status-active',
-    leak_suspected: 'status-inactive',
-    idle: 'status-idle',
-    config_mismatch: 'status-inactive',
-};
-
-function renderDnsLeakCheck(protocol, data) {
-    updateDnsLeakSummary(protocol, data);
-
-    const container = document.getElementById(`${protocol}-dns-leak-list`);
-    if (!container || !data) return;
-
-    if (!data.available) {
-        container.innerHTML = `
-            <div class="dns-leak-row">
-                <span class="status-badge status-unavailable">Not Available</span>
-                <span class="text-muted">${data.reason || ''}</span>
-            </div>
-        `;
-        return;
-    }
-
-    const items = data.peers || data.clients || [];
-    if (items.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted">No connected peers/clients to check right now</div>';
-        return;
-    }
-
-    container.innerHTML = items.map(item => `
-        <div class="dns-leak-row">
-            <span class="dns-leak-name">${item.name}</span>
-            <span class="status-badge ${DNS_LEAK_STATUS_CLASSES[item.status] || 'status-idle'}">${DNS_LEAK_STATUS_LABELS[item.status] || item.status}</span>
-        </div>
-    `).join('');
-}
-
-// The compact stat-card up top (next to Active Connections/Server Status) -
-// same data as the detailed list below, just condensed to one glance.
+// The compact stat-card up top, next to Active Connections/Server Status -
+// "Protected" / "N Issues" / "N/A", with the reasoning in the card's title
+// tooltip (see wireguard.html/openvpn.html/ikev2.html).
 function updateDnsLeakSummary(protocol, data) {
     const valueEl = document.getElementById(`${protocol}-dns-leak-summary`);
     const labelEl = document.getElementById(`${protocol}-dns-leak-summary-label`);
