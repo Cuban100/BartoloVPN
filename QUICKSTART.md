@@ -140,6 +140,10 @@ BartoloVPN leverages Docker's advanced networking for automatic IP rotation and 
 - **No Logging**: Zero traffic logging
 - **Multi-Factor Auth**: JWT-based sessions
 
+## 🌐 Multi-Region (Optional)
+
+Want peers to be able to pick a country, with a real exit IP in that country instead of just your one server? See **[MULTI-REGION.md](MULTI-REGION.md)** - it covers one-click provisioning on Oracle Cloud (no SSH needed) and manual setup on any other VPS provider.
+
 ## 🌍 Multi-Protocol Support
 
 ### WireGuard (Recommended)

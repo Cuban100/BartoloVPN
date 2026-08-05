@@ -38,6 +38,8 @@ A comprehensive VPN server solution supporting **WireGuard**, **OpenVPN**, and *
 - **Mobile Support** - QR code generation for easy mobile client setup
 
 ### 🚀 Advanced Features
+- **Multi-Region WireGuard** - Run real WireGuard servers in multiple countries and let peers pick which one to connect through, like a commercial VPN's country picker but backed by your own VPS. See [MULTI-REGION.md](MULTI-REGION.md).
+- **One-Click Oracle Cloud Provisioning** - Add a new region by clicking "Add via Oracle" in the dashboard - it creates the Always Free VM, installs Docker, and deploys the region agent for you, no SSH required. Health checks query Oracle's real instance state, not just an HTTP ping.
 - **Load Balancing** - HAProxy integration for high availability
 - **IP Rotation** - Dynamic IP address rotation to avoid detection
 - **Geo-spoofing** - Configure VPN to appear in different countries
@@ -53,14 +55,18 @@ A comprehensive VPN server solution supporting **WireGuard**, **OpenVPN**, and *
 | Multi-user accounts | ✅ | ❌ | ❌ | ✅ |
 | QR code client setup | ✅ | ✅ | ✅ | ❌ |
 | Geo-spoofing / IP rotation | ✅ | ❌ | ❌ | ❌ |
+| Multi-region country picker | ✅ (real exit IPs, one-click Oracle provisioning) | ❌ | ❌ | ✅ (mesh, not country-picker style) |
 | Load balancing (HAProxy) | ✅ | ❌ | ❌ | ❌ |
 | Zero-config mesh networking | ❌ | ❌ | ❌ | ✅ |
 
-BartoloVPN's niche is **protocol breadth** (run WireGuard, OpenVPN, and IKEv2 side by side from one dashboard) plus **geo-spoofing/IP rotation**, which the single-protocol WireGuard dashboards don't offer. If you need zero-config mesh networking across many nodes, Netmaker is the better fit; if you just want the simplest possible single-protocol WireGuard box, wg-easy is lighter weight.
+BartoloVPN's niche is **protocol breadth** (run WireGuard, OpenVPN, and IKEv2 side by side from one dashboard) plus **geo-spoofing/IP rotation** and a **real multi-region country picker**, which the single-protocol WireGuard dashboards don't offer. If you need zero-config mesh networking across many nodes, Netmaker is the better fit; if you just want the simplest possible single-protocol WireGuard box, wg-easy is lighter weight.
 
 ## 🆕 What's New
 
 ### Latest Updates
+- **Multi-Region WireGuard + One-Click Oracle Provisioning** - Real WireGuard servers in multiple countries, added from the dashboard's Regions tab with zero manual SSH on Oracle Cloud
+- **Region-Aware Monitoring** - The Active Connections table and VPN Performance widget now include peers connected through remote regions, not just the local server
+- **Real DNS Activity Logging** - The Activity tab now shows genuine per-peer domain lookups
 - **User Authentication** - Secure JWT-based authentication system
 - **FastAPI Backend** - Migrated from Flask for better performance
 - **Enhanced Security** - Improved password hashing and security practices
@@ -237,6 +243,7 @@ docker-compose logs ikev2
 ## 📚 Documentation
 
 ### Setup Guides
+- **[Multi-Region Guide](MULTI-REGION.md)** - Run real WireGuard servers in multiple countries, including one-click Oracle Cloud provisioning
 - **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
 - **[Local TLS Setup](TLS-SETUP.md)** - HTTPS via your own domain + Let's Encrypt, without Cloudflare
 - **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
@@ -251,15 +258,21 @@ docker-compose logs ikev2
 ### Project Structure
 ```
 BartoloVPN/
-├── api/                    # FastAPI backend
+├── api/                    # FastAPI backend (central dashboard)
 │   ├── main.py            # Main application
 │   ├── database.py        # Database models
 │   ├── config.py          # Configuration
+│   ├── oracle_service.py  # Oracle Cloud auto-provisioning
+│   ├── region_client.py   # HTTP client for talking to region agents
+│   ├── region_service.py  # Region CRUD + health checks
 │   └── requirements.txt   # Python dependencies
+├── region-agent/           # Deployed on each remote VPS for multi-region
+│   ├── agent.py            # Minimal authenticated peer CRUD + health API
+│   └── wireguard_core.py   # Peer lifecycle logic (mirrors api/main.py's local version)
 ├── web/                   # Frontend
 │   ├── templates/         # Jinja2 templates
 │   └── static/           # CSS, JS, images
-├── scripts/              # Utility scripts
+├── scripts/              # Utility scripts (includes provision-region.sh)
 ├── config/               # VPN configurations
 ├── docker-compose.yml    # Service orchestration
 └── README.md            # This file
@@ -272,7 +285,10 @@ BartoloVPN/
 - `POST /auth/register` - User registration
 - `POST /auth/login` - User authentication
 - `GET /vpn/wireguard/status` - WireGuard status
-- `POST /vpn/wireguard/peers` - Create WireGuard peer
+- `POST /vpn/wireguard/peers` - Create WireGuard peer (optional `region`, defaults to local)
+- `GET /regions` / `POST /regions` - List/add multi-region WireGuard servers
+- `POST /regions/oracle` - One-click Oracle Cloud region provisioning
+- `POST /regions/{id}/health-check` - Check a region's real status
 
 ### Contributing
 1. Fork the repository

@@ -65,6 +65,7 @@ services:
       - LOG_CONFS=true
     volumes:
       - ./config/wireguard:/config
+      - ./config/wireguard-coredns/Corefile:/config/coredns/Corefile:ro
       - /lib/modules:/lib/modules
     ports:
       - "${WIREGUARD_PORT:-51820}:51820/udp"
@@ -271,12 +272,13 @@ REGION_AGENT_ENCRYPTION_KEY=your-region-agent-encryption-key
 - **IKEv2** - Enterprise-grade VPN
 
 ### Management Interface
-- Real-time dashboard (WireGuard + OpenVPN monitoring, live stats)
+- Real-time dashboard (WireGuard + OpenVPN monitoring, live stats), including remote-region connections
 - Per-protocol client/peer management, including WireGuard peer rename
 - DNS activity logging per peer/client, with pagination and protocol filtering
 - Load balancing via HAProxy
 
 ### Advanced Features
+- **Multi-region WireGuard** - real servers in multiple countries via `region-agent/`, including one-click Oracle Cloud provisioning with no manual SSH (see the main repo's `MULTI-REGION.md`)
 - Per-client DNS-region override for OpenVPN clients (changes DNS resolver only, not egress IP)
 - Multi-user authentication with JWT-based sessions
 
