@@ -38,6 +38,14 @@
         </div>
         
         <div class="section-header">
+            <h3>DNS Leak Check</h3>
+        </div>
+        <p class="text-muted" style="margin: 0 0 12px;">Cross-checks connected peers' DNS config against real query activity. Not a substitute for a client-side leak test - just a real, checkable signal.</p>
+        <div id="wireguard-dns-leak-list" class="dns-leak-list">
+            <div class="text-center text-muted">Loading...</div>
+        </div>
+
+        <div class="section-header">
             <h3>Peer Management</h3>
             <div class="section-actions">
                 <button class="btn btn-primary" onclick="showAddPeerModal()">

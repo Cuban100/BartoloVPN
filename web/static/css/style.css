@@ -1555,9 +1555,36 @@ body:has(.login-container) .footer,
     color: #92400e;
 }
 
+.status-badge.status-idle,
+.status-badge.status-unavailable {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
 .role-badge.role-admin {
     background-color: #fbbf24;
     color: #92400e;
+}
+
+.dns-leak-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.dns-leak-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.9rem;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.dns-leak-name {
+    font-weight: 500;
 }
 
 .role-badge.role-user {

@@ -1871,6 +1871,100 @@ def _protocol_for_ip(ip: str) -> str:
         return 'OpenVPN'
     return 'Unknown'
 
+DNS_LEAK_CHECK_WINDOW_MINUTES = 30
+DNS_LEAK_CHECK_MIN_BYTES = 100 * 1024  # 100KB - enough to indicate real browsing, not just the keepalive handshake
+
+def _wireguard_peer_config_dns(peer_name: str) -> Optional[str]:
+    """Reads the DNS line straight out of a peer's own saved .conf file,
+    rather than assuming it's still what create_wireguard_peer originally
+    wrote - catches a manually-edited or otherwise drifted config."""
+    peer_file = os.path.join(settings.wireguard_config_path, "peers", f"{peer_name}.conf")
+    try:
+        with open(peer_file, "r") as f:
+            for line in f:
+                if line.strip().startswith("DNS ="):
+                    return line.split("=", 1)[1].strip()
+    except FileNotFoundError:
+        pass
+    return None
+
+@app.get("/api/dns/leak-check")
+async def get_dns_leak_check(current_user: dict = Depends(get_current_user)):
+    """Cross-checks each connected peer/client's DNS against real query
+    activity - not a substitute for a client-side leak test (the server
+    can't see what a client's OS actually does before traffic reaches the
+    tunnel), but flags a real, checkable signal: a peer that's clearly
+    transferring data but has no DNS queries logged against it is either
+    leaking DNS to somewhere this server doesn't see, or overriding it
+    client-side. A peer with no data transfer is just idle - not flagged."""
+    now = datetime.now()
+    window_start = now - timedelta(minutes=DNS_LEAK_CHECK_WINDOW_MINUTES)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(DnsQueryLog.peer_ip).where(DnsQueryLog.timestamp >= window_start).distinct()
+        )
+        recent_dns_ips = {row[0] for row in result.all()}
+
+    now_ts = now.timestamp()
+    try:
+        wg_peers = await vpn_manager.get_wireguard_peer_stats()
+    except Exception as e:
+        logger.warning(f"Could not fetch local WireGuard stats for DNS leak check: {e}")
+        wg_peers = []
+    wg_results = []
+    for p in wg_peers:
+        if not p['latest_handshake'] or (now_ts - p['latest_handshake']) >= 180:
+            continue  # not currently connected
+        has_traffic = (p['rx_bytes'] + p['tx_bytes']) >= DNS_LEAK_CHECK_MIN_BYTES
+        has_dns_activity = p['ip'] in recent_dns_ips
+        config_dns = _wireguard_peer_config_dns(p['name'])
+        expected_dns = f"{_WIREGUARD_IP_PREFIX}1"
+        config_ok = config_dns == expected_dns
+        if not config_ok:
+            status = "config_mismatch"
+        elif has_traffic and not has_dns_activity:
+            status = "leak_suspected"
+        elif has_dns_activity:
+            status = "ok"
+        else:
+            status = "idle"
+        wg_results.append({
+            "name": p['name'], "ip": p['ip'], "status": status,
+            "config_dns": config_dns, "expected_dns": expected_dns,
+        })
+
+    try:
+        ovpn_clients = await vpn_manager.get_openvpn_client_stats()
+    except Exception as e:
+        logger.warning(f"Could not fetch local OpenVPN stats for DNS leak check: {e}")
+        ovpn_clients = []
+    ovpn_results = []
+    for c in ovpn_clients:
+        has_traffic = (c['rx_bytes'] + c['tx_bytes']) >= DNS_LEAK_CHECK_MIN_BYTES
+        has_dns_activity = bool(c['virtual_ip']) and c['virtual_ip'] in recent_dns_ips
+        if has_traffic and not has_dns_activity:
+            status = "leak_suspected"
+        elif has_dns_activity:
+            status = "ok"
+        else:
+            status = "idle"
+        ovpn_results.append({"name": c['name'], "ip": c['virtual_ip'], "status": status})
+
+    return {
+        "window_minutes": DNS_LEAK_CHECK_WINDOW_MINUTES,
+        "wireguard": {"available": True, "peers": wg_results},
+        "openvpn": {
+            "available": True,
+            "clients": ovpn_results,
+            "note": "Clients created with a DNS region override intentionally use external DNS servers this dashboard doesn't log - that shows as no activity here, which is expected, not a leak.",
+        },
+        "ikev2": {
+            "available": False,
+            "reason": "No dedicated DNS server or query logging is configured for IKEv2 yet.",
+        },
+    }
+
 @app.get("/api/dns/queries")
 async def get_dns_queries(
     page: int = 1,

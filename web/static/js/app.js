@@ -832,6 +832,78 @@ function cleanupMonitoring() {
     stopMonitoringInterval();
 }
 
+// DNS Leak Check widget (WireGuard/OpenVPN tabs) - shares the same
+// refreshIntervalMs/autoRefreshEnabled state as Monitoring's own
+// auto-refresh, so it stays in sync with whatever the user set there even
+// though this runs from a different tab.
+let dnsLeakCheckInterval = null;
+
+function initializeDnsLeakCheck(protocol) {
+    loadDnsLeakCheck(protocol);
+    if (autoRefreshEnabled) {
+        dnsLeakCheckInterval = setInterval(() => loadDnsLeakCheck(protocol), refreshIntervalMs);
+    }
+}
+
+function cleanupDnsLeakCheck() {
+    if (dnsLeakCheckInterval) {
+        clearInterval(dnsLeakCheckInterval);
+        dnsLeakCheckInterval = null;
+    }
+}
+
+async function loadDnsLeakCheck(protocol) {
+    try {
+        const response = await apiFetch('/api/dns/leak-check');
+        if (!response.ok) return;
+        const data = await response.json();
+        renderDnsLeakCheck(protocol, data[protocol]);
+    } catch (error) {
+        console.error('Error loading DNS leak check:', error);
+    }
+}
+
+const DNS_LEAK_STATUS_LABELS = {
+    ok: 'Protected',
+    leak_suspected: 'Possible Leak',
+    idle: 'Idle',
+    config_mismatch: 'Config Mismatch',
+};
+const DNS_LEAK_STATUS_CLASSES = {
+    ok: 'status-active',
+    leak_suspected: 'status-inactive',
+    idle: 'status-idle',
+    config_mismatch: 'status-inactive',
+};
+
+function renderDnsLeakCheck(protocol, data) {
+    const container = document.getElementById(`${protocol}-dns-leak-list`);
+    if (!container || !data) return;
+
+    if (!data.available) {
+        container.innerHTML = `
+            <div class="dns-leak-row">
+                <span class="status-badge status-unavailable">Not Available</span>
+                <span class="text-muted">${data.reason || ''}</span>
+            </div>
+        `;
+        return;
+    }
+
+    const items = data.peers || data.clients || [];
+    if (items.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted">No connected peers/clients to check right now</div>';
+        return;
+    }
+
+    container.innerHTML = items.map(item => `
+        <div class="dns-leak-row">
+            <span class="dns-leak-name">${item.name}</span>
+            <span class="status-badge ${DNS_LEAK_STATUS_CLASSES[item.status] || 'status-idle'}">${DNS_LEAK_STATUS_LABELS[item.status] || item.status}</span>
+        </div>
+    `).join('');
+}
+
 // Fetch current authenticated user details
 async function fetchCurrentUser() {
     try {
@@ -884,16 +956,26 @@ function switchTab(tabName) {
         console.error('Nav item not found for tab:', tabName);
     }
     
+    // Stop any per-tab auto-refresh intervals before switching - these used
+    // to only run in the trailing "unreachable else" branch below (dead
+    // code, since every real tab name matches one of the explicit branches),
+    // so Monitoring's refresh interval never actually stopped when
+    // navigating away from it. Unconditional at the top instead.
+    cleanupMonitoring();
+    cleanupDnsLeakCheck();
+
     // Load data when specific tabs are opened
     if (tabName === 'wireguard') {
         loadWireguardPeers();
         loadDashboardData();
         loadRegions();
+        initializeDnsLeakCheck('wireguard');
     } else if (tabName === 'users') {
         loadUsers();
     } else if (tabName === 'openvpn') {
         loadOpenVPNClients();
         loadDashboardData();
+        initializeDnsLeakCheck('openvpn');
     } else if (tabName === 'monitoring') {
         initializeMonitoring();
     } else if (tabName === 'activity') {
@@ -901,13 +983,11 @@ function switchTab(tabName) {
     } else if (tabName === 'ikev2') {
         loadIkev2Credentials();
         loadDashboardData();
+        loadDnsLeakCheck('ikev2'); // static "not available" state - no recurring interval needed
     } else if (tabName === 'regions') {
         loadRegionsAdminTable();
     } else if (tabName === 'settings') {
         loadSettings();
-    } else {
-        // Stop monitoring when switching away from monitoring tab
-        cleanupMonitoring();
     }
 }
 

@@ -38,6 +38,14 @@
         </div>
         
         <div class="section-header">
+            <h3>DNS Leak Check</h3>
+        </div>
+        <p class="text-muted" style="margin: 0 0 12px;">Cross-checks connected clients' DNS activity. Clients created with a DNS region override intentionally use external DNS servers this dashboard doesn't log - that shows as no activity, which is expected, not a leak.</p>
+        <div id="openvpn-dns-leak-list" class="dns-leak-list">
+            <div class="text-center text-muted">Loading...</div>
+        </div>
+
+        <div class="section-header">
             <h3>Client Management</h3>
             <div class="section-actions">
                 <button class="btn btn-primary" onclick="showAddOpenVPNClientModal()">
