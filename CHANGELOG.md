@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-04
+
 ### Added
 - **Multi-region WireGuard support** - a new `region-agent/` service deployable on any additional VPS, plus a `Region` model, `RegionClient`/`region_service` in the dashboard, and a Regions tab in the UI. Peer create/list/edit/delete all take an optional `region`, defaulting to today's local-only behavior. See `MULTI-REGION.md`.
 - **One-click Oracle Cloud region provisioning** (`POST /regions/oracle`) - creates a real Always Free `VM.Standard.E2.1.Micro` instance via the OCI SDK, installs Docker and the region agent via cloud-init, and polls until healthy, all as a background task with no manual SSH.

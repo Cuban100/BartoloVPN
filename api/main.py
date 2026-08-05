@@ -1446,7 +1446,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="BartoloVPN API",
     description="Multi-Protocol VPN Server Management API",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -1553,7 +1553,7 @@ async def dashboard_page(request: Request, db: AsyncSession = Depends(get_db)):
 @app.get("/api")
 async def api_info():
     """API information endpoint"""
-    return {"message": "BartoloVPN API", "version": "1.0.0"}
+    return {"message": "BartoloVPN API", "version": "1.1.0"}
 
 @app.get("/health")
 async def health_check():
@@ -1567,7 +1567,7 @@ async def get_system_status(current_user: dict = Depends(get_current_user)):
         "system": {
             "status": "online",
             "uptime": "2h 15m",
-            "version": "1.0.0"
+            "version": "1.1.0"
         },
         "vpn": {
             "wireguard": {

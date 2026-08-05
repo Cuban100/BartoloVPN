@@ -35,13 +35,13 @@ What happens after you click it:
 1. **Get a VPS** in the country you want. Two realistic options:
    - **Oracle Cloud "Always Free" tier** - genuinely free forever (not a 12-month trial), up to 4 Ampere ARM cores + 24GB RAM. The catch: it's tied to the *one* home region you pick at signup, so it only gets you your first free region, not five. Getting more free regions by creating multiple Oracle accounts is account-limit abuse most providers ban for - don't do that.
    - **DigitalOcean, Vultr, Hetzner, etc.** - roughly $5-7/month per box, any country you want, no account-limit games required.
-2. **SSH into it**, clone this repo, and run the installer:
+2. **SSH into it**, clone this repo, and run the provisioning script directly (root required):
    ```bash
    git clone https://github.com/Cuban100/BartoloVPN.git
    cd BartoloVPN
-   ./install.sh
+   sudo ./scripts/provision-region.sh
    ```
-   `install.sh` asks what you're setting up - choose **"2) A new region for an EXISTING BartoloVPN dashboard"**, and it hands off to `scripts/provision-region.sh` with root (you can also run that script directly if you prefer).
+   (`install.sh`/`vpn-setup.py` are for setting up a brand-new *dashboard* - they don't have a region-provisioning mode. This script is separate and self-contained.)
 3. **Answer the prompts:**
    - **"Is this an Oracle Cloud (OCI) VPS?"** - answer `y` on Oracle boxes and it'll additionally patch Oracle's stock, overly-restrictive `iptables` rules (which sit underneath `ufw` and silently drop traffic `ufw` claims is allowed) and print a reminder about Oracle's *separate* console-level firewall (Security Lists), which no SSH-run script can touch for you.
    - **Continent, then city** - a guided picker (Europe/Asia/South America/Oceania/Africa/North America, then a short list of real cities per continent) that auto-fills the slug/display name/country code/city for you, or choose "Custom" to type everything in by hand. Picking a continent different from your own is exactly how you get an exit IP that appears to browse from somewhere else - a region on your own continent won't achieve that.
