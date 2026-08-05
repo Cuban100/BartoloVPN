@@ -39,7 +39,6 @@ DOMAIN="${DOMAIN:-}"
 TUNNEL_NAME="${TUNNEL_NAME:-bartolo-vpn}"
 LOCAL_IP="${LOCAL_IP:-}"
 API_PORT="${API_PORT:-5000}"
-WEB_PORT="${WEB_PORT:-8080}"
 STATS_PORT="${STATS_PORT:-8404}"
 
 if [ -z "$DOMAIN" ]; then
@@ -118,32 +117,27 @@ create_config() {
     # Create config directory
     mkdir -p config/cloudflared
     
-    # Create configuration file
+    # Create configuration file. No separate "web UI" target - the dashboard
+    # and the API are the same FastAPI app (vpn-api, $API_PORT).
     cat > config/cloudflared/config.yml << EOF
 tunnel: $TUNNEL_ID
 credentials-file: /etc/cloudflared/$TUNNEL_ID.json
 
 ingress:
-  # VPN Management Interface (FastAPI)
+  # BartoloVPN dashboard + API (same FastAPI app, vpn-api)
   - hostname: vpn.$DOMAIN
     service: http://$LOCAL_IP:$API_PORT
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
       readTimeout: 30s
-  
-  # Web UI (if separate)
-  - hostname: vpn-ui.$DOMAIN
-    service: http://$LOCAL_IP:$WEB_PORT
-    originRequest:
-      noTLSVerify: true
-  
+
   # HAProxy Stats (optional)
   - hostname: vpn-stats.$DOMAIN
     service: http://$LOCAL_IP:$STATS_PORT
     originRequest:
       noTLSVerify: true
-  
+
   # Catch-all rule (must be last)
   - service: http_status:404
 EOF
@@ -153,15 +147,13 @@ EOF
 
 setup_dns() {
     log_step "Setting up DNS records..."
-    
+
     # Create DNS records
     cloudflared tunnel route dns "$TUNNEL_NAME" "vpn.$DOMAIN"
-    cloudflared tunnel route dns "$TUNNEL_NAME" "vpn-ui.$DOMAIN"
     cloudflared tunnel route dns "$TUNNEL_NAME" "vpn-stats.$DOMAIN"
-    
+
     log_info "DNS records created:"
     log_info "  - vpn.$DOMAIN"
-    log_info "  - vpn-ui.$DOMAIN"
     log_info "  - vpn-stats.$DOMAIN"
 }
 
@@ -174,25 +166,22 @@ update_docker_compose() {
         return
     fi
     
-    # Add cloudflared service to docker-compose.yml
+    # Add cloudflared service to docker-compose.yml. No vpn-network/static IP
+    # needed - vpn-api isn't on that network (it shares wireguard's netns),
+    # and the ingress config above reaches services via LOCAL_IP, not
+    # container-name DNS. "web-ui" isn't a real service - it's vpn-api.
     cat >> docker-compose.yml << 'EOF'
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: bartolo-cloudflared
+    container_name: ${COMPOSE_PROJECT_NAME}-cloudflared
     restart: unless-stopped
     command: tunnel --config /etc/cloudflared/config.yml run bartolo-vpn
     volumes:
       - ./config/cloudflared:/etc/cloudflared:ro
-    networks:
-      vpn-network:
-        ipv4_address: 172.20.0.20
     depends_on:
-      - vpn-api
-      - web-ui
+      - wireguard
       - haproxy
-    labels:
-      - "traefik.enable=false"
 EOF
 
     log_info "Added cloudflared service to docker-compose.yml"
@@ -200,7 +189,15 @@ EOF
 
 create_systemd_service() {
     log_step "Creating systemd service for cloudflared..."
-    
+
+    if systemctl list-unit-files cloudflared.service &>/dev/null && systemctl is-active --quiet cloudflared; then
+        log_error "A 'cloudflared' systemd service is already active on this host (likely managing a different tunnel for other services). Overwriting it here would break that tunnel too."
+        log_error "Run cloudflared manually instead (see the 'Start Tunnel' step in cloudflare-tunnel-setup.md), or add an ingress rule to your existing tunnel's config instead of creating a second service."
+        exit 1
+    fi
+
+    PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
     # Create systemd service file
     sudo tee /etc/systemd/system/cloudflared.service > /dev/null << EOF
 [Unit]
@@ -210,7 +207,7 @@ After=network.target
 [Service]
 Type=simple
 User=$USER
-ExecStart=/usr/local/bin/cloudflared tunnel --config /home/$USER/BartoloVPN/config/cloudflared/config.yml run bartolo-vpn
+ExecStart=/usr/local/bin/cloudflared tunnel --config $PROJECT_ROOT/config/cloudflared/config.yml run bartolo-vpn
 Restart=always
 RestartSec=5
 

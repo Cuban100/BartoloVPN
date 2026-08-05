@@ -1,305 +1,86 @@
 # 🌍 Geo-Spoofing Guide for BartoloVPN
 
-Make your VPN appear as if it's located in Sweden (or any country) using advanced techniques.
+> ⚠️ **Optional, DIY, and not configured on a fresh install.** Nothing here runs
+> automatically - you have to run `scripts/geo-spoofing.sh` yourself, and as of
+> now it only supports **Sweden**, hardcoded (not "any country" - see below).
 
-## 🎯 What is Geo-Spoofing?
+## ⚠️ What this actually does (read before using)
 
-Geo-spoofing makes your VPN traffic appear to originate from a specific country by:
-- **DNS Configuration**: Using local DNS servers
-- **Timezone Settings**: Setting server timezone to target country
-- **Locale Configuration**: Using local language settings
-- **IP Headers**: Adding geographic headers to traffic
-- **DNS Leak Prevention**: Ensuring all DNS queries go through local servers
+`scripts/geo-spoofing.sh setup` does exactly one real thing: it edits `.env` to
+point `DNS_SERVERS`/`WIREGUARD_DNS` at Swedish DNS resolvers. That's it. It also
+*generates* several extra files (`docker-compose.swedish.yml`, `haproxy.swedish.cfg`,
+a GeoIP config with example/fake IP ranges) - but **none of those are wired into
+the real stack**. `docker-compose.yml` never references them, and running
+`geo-spoofing.sh start` brings up a second, separate, unrelated WireGuard
+container rather than changing the real one.
 
-## 🇸🇪 Swedish VPN Setup
+**This does not change your actual exit IP or its geolocation.** A site that
+geolocates by IP (which is most of them - Netflix, banks, `ipinfo.io`, etc.)
+will still see your real server's location, because DNS resolver choice has no
+effect on which IP your traffic actually egresses from. This is the same
+distinction [MULTI-REGION.md](MULTI-REGION.md) draws: only a genuinely
+different server in a different place (a multi-region peer) changes your exit
+IP. DNS-only spoofing changes what a handful of DNS-based geolocation checks
+see, and nothing else - don't rely on it for anything that matters.
 
-### Quick Setup
+## What it's actually useful for
+
+Making a client's DNS queries resolve through Swedish servers instead of your
+own ISP's or a US-based public resolver - e.g. for content that geolocates
+purely by DNS resolver rather than IP (rare, but it exists), or just to keep
+DNS traffic off your ISP's resolvers.
+
+## Usage
+
 ```bash
-# Setup Swedish environment
+# Point DNS_SERVERS/WIREGUARD_DNS in .env at Swedish resolvers
 ./scripts/geo-spoofing.sh setup
 
-# Create Swedish client config for a friend
+# Generate a WireGuard client config that uses those DNS servers
 ./scripts/geo-spoofing.sh client friend1
 
-# Start Swedish VPN services
-./scripts/geo-spoofing.sh start
-
-# Check status
+# Show current DNS-related .env values
 ./scripts/geo-spoofing.sh status
 ```
 
-### What the Script Does
-
-1. **🌐 Swedish DNS Servers**
-   - Primary: `130.242.4.8` (Swedish University Network)
-   - Secondary: `130.242.4.9` (Swedish University Network)
-   - Backup: `8.8.8.8`, `1.1.1.1`
-
-2. **⏰ Swedish Timezone**
-   - Timezone: `Europe/Stockholm`
-   - Locale: `sv_SE.UTF-8`
-
-3. **🏷️ Swedish Headers**
-   - `X-Country: SE`
-   - `X-Region: Europe`
-   - `X-City: Stockholm`
-
-## 🔧 Manual Configuration
-
-### 1. Update Environment Variables
+After `setup`, restart the real stack for the new `DNS_SERVERS`/`WIREGUARD_DNS`
+values to take effect:
 ```bash
-# Edit .env file
-nano .env
-
-# Add these lines:
-DNS_SERVERS=130.242.4.8,130.242.4.9,8.8.8.8,1.1.1.1
-WIREGUARD_DNS=130.242.4.8,130.242.4.9,8.8.8.8,1.1.1.1
-TIMEZONE=Europe/Stockholm
-LOCALE=sv_SE.UTF-8
+docker-compose up -d --force-recreate wireguard vpn-api
 ```
 
-### 2. Configure WireGuard for Sweden
+`./scripts/geo-spoofing.sh start` / `stop` bring up/down the separate,
+disconnected `docker-compose.swedish.yml` stack described above - almost
+certainly not what you want; there's no supported way today to point the
+*real* WireGuard/OpenVPN containers' DNS at Sweden other than the `setup`
+step above plus a restart.
+
+## Other countries
+
+Not currently supported. The script's Swedish DNS servers, timezone, and
+locale values are hardcoded, not parameterized - "German mode" or "Japanese
+mode" would need someone to add that (a real script change, not a config
+option). If you want a genuinely different exit country/IP, see
+[MULTI-REGION.md](MULTI-REGION.md) instead - that's the feature actually built
+for that.
+
+## Manual DNS-only spoofing for another country
+
+If you want to do the DNS-only version yourself for a country other than
+Sweden, the mechanism is simple - set these two `.env` values to that
+country's public DNS resolvers, then restart:
+
 ```bash
-# Create Swedish WireGuard config
-cat > config/wireguard/swedish_wg0.conf << 'EOF'
-[Interface]
-PrivateKey = YOUR_PRIVATE_KEY
-Address = 10.13.13.1/24
-ListenPort = 51820
-
-# Swedish DNS servers
-PostUp = echo "nameserver 130.242.4.8" > /etc/resolv.conf
-PostUp = echo "nameserver 130.242.4.9" >> /etc/resolv.conf
-PostUp = echo "nameserver 8.8.8.8" >> /etc/resolv.conf
-
-# Swedish timezone
-PostUp = ln -sf /usr/share/zoneinfo/Europe/Stockholm /etc/localtime
-PostUp = echo "Europe/Stockholm" > /etc/timezone
-
-# Swedish locale
-PostUp = echo "LANG=sv_SE.UTF-8" >> /etc/environment
-PostUp = echo "LC_ALL=sv_SE.UTF-8" >> /etc/environment
-
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
-EOF
+DNS_SERVERS=<resolver1>,<resolver2>
+WIREGUARD_DNS=<resolver1>,<resolver2>
 ```
 
-### 3. Create Swedish Client Configuration
-```bash
-# Generate Swedish client config
-cat > config/wireguard/peers/friend_sweden.conf << 'EOF'
-[Interface]
-PrivateKey = CLIENT_PRIVATE_KEY
-Address = 10.13.13.100/24
-DNS = 130.242.4.8, 130.242.4.9, 8.8.8.8, 1.1.1.1
-
-[Peer]
-PublicKey = SERVER_PUBLIC_KEY
-Endpoint = your-server-ip:51820
-AllowedIPs = 0.0.0.0/0
-PersistentKeepalive = 25
-
-# Swedish configuration
-# This client will appear to be connecting from Sweden
-EOF
-```
-
-## 🌍 Other Countries
-
-### 🇺🇸 United States
-```bash
-# US DNS servers
-DNS_SERVERS=8.8.8.8,8.8.4.4,1.1.1.1,1.0.0.1
-TIMEZONE=America/New_York
-LOCALE=en_US.UTF-8
-```
-
-### 🇬🇧 United Kingdom
-```bash
-# UK DNS servers
-DNS_SERVERS=8.8.8.8,1.1.1.1,208.67.222.222,208.67.220.220
-TIMEZONE=Europe/London
-LOCALE=en_GB.UTF-8
-```
-
-### 🇩🇪 Germany
-```bash
-# German DNS servers
-DNS_SERVERS=8.8.8.8,1.1.1.1,217.172.224.47,217.172.224.48
-TIMEZONE=Europe/Berlin
-LOCALE=de_DE.UTF-8
-```
-
-### 🇯🇵 Japan
-```bash
-# Japanese DNS servers
-DNS_SERVERS=8.8.8.8,1.1.1.1,202.12.27.33,202.12.27.34
-TIMEZONE=Asia/Tokyo
-LOCALE=ja_JP.UTF-8
-```
-
-## 🔍 Verification Methods
-
-### 1. DNS Leak Test
-```bash
-# Test DNS servers
-nslookup google.com 130.242.4.8
-nslookup google.com 130.242.4.9
-
-# Check if DNS queries go through Swedish servers
-dig +short whoami.akamai.net @130.242.4.8
-```
-
-### 2. Timezone Verification
-```bash
-# Check server timezone
-docker exec bartolo-wireguard date
-docker exec bartolo-wireguard cat /etc/timezone
-```
-
-### 3. IP Geolocation Test
-```bash
-# Test from client
-curl -s https://ipapi.co/json/ | jq '.country, .city, .timezone'
-curl -s https://ipinfo.io/json | jq '.country, .city, .timezone'
-```
-
-### 4. WebRTC Leak Test
-```bash
-# Check WebRTC leaks
-curl -s https://browserleaks.com/webrtc | grep -i "ip\|country"
-```
-
-## 🛡️ Advanced Techniques
-
-### 1. Multiple Country Rotation
-```bash
-# Create rotation script
-cat > scripts/country-rotation.sh << 'EOF'
-#!/bin/bash
-COUNTRIES=("sweden" "germany" "uk" "japan" "us")
-CURRENT_COUNTRY=${COUNTRIES[$RANDOM % ${#COUNTRIES[@]}]}
-
-echo "Rotating to: $CURRENT_COUNTRY"
-./scripts/geo-spoofing.sh setup_$CURRENT_COUNTRY
-EOF
-
-chmod +x scripts/country-rotation.sh
-```
-
-### 2. DNS Over HTTPS (DoH)
-```bash
-# Configure DoH for better privacy
-cat > config/dns/doh.conf << 'EOF'
-# DNS Over HTTPS configuration
-server {
-    listen 53;
-    forward 130.242.4.8:443 tls://dns.switch.ch
-    forward 130.242.4.9:443 tls://dns.switch.ch
-}
-EOF
-```
-
-### 3. Custom Headers
-```bash
-# Add custom geographic headers
-cat > config/nginx/swedish-headers.conf << 'EOF'
-# Swedish geographic headers
-add_header X-Country "SE";
-add_header X-Region "Europe";
-add_header X-City "Stockholm";
-add_header X-Timezone "Europe/Stockholm";
-add_header X-Locale "sv_SE.UTF-8";
-EOF
-```
-
-## 🚨 Important Notes
-
-### ⚠️ Legal Considerations
-- **Check local laws** regarding VPN usage
-- **Respect terms of service** of websites you access
-- **Don't use for illegal activities**
-
-### 🔒 Security Best Practices
-- **Regular updates** of DNS server lists
-- **Monitor for DNS leaks** regularly
-- **Use HTTPS** for all web traffic
-- **Enable kill switch** to prevent leaks
-
-### 📊 Monitoring
-```bash
-# Monitor DNS queries
-docker exec bartolo-wireguard tcpdump -i any port 53
-
-# Check geographic headers
-curl -I https://your-server-ip:8080
-
-# Monitor timezone consistency
-docker exec bartolo-wireguard date
-```
-
-## 🎯 Testing Your Setup
-
-### 1. DNS Leak Test
-Visit: https://www.dnsleaktest.com
-- Should show Swedish DNS servers
-- No leaks to your real location
-
-### 2. IP Geolocation Test
-Visit: https://ipinfo.io
-- Should show Sweden as country
-- Stockholm as city
-- Swedish timezone
-
-### 3. WebRTC Leak Test
-Visit: https://browserleaks.com/webrtc
-- Should not reveal your real IP
-- Should show Swedish location
-
-### 4. Speed Test
-Visit: https://www.speedtest.net
-- Test connection speed
-- Verify no significant slowdown
-
-## 🔄 Automation
-
-### Cron Job for Regular Rotation
-```bash
-# Add to crontab
-crontab -e
-
-# Rotate country every 6 hours
-0 */6 * * * /path/to/bartolovpn/scripts/country-rotation.sh
-
-# Check for DNS leaks daily
-0 2 * * * /path/to/bartolovpn/scripts/dns-leak-check.sh
-```
-
-### Docker Compose with Country Rotation
-```yaml
-# docker-compose.country.yml
-version: '3.8'
-services:
-  wireguard:
-    environment:
-      - COUNTRY=sweden
-      - DNS_SERVERS=130.242.4.8,130.242.4.9
-      - TIMEZONE=Europe/Stockholm
-    labels:
-      - "country=sweden"
-      - "region=europe"
-```
-
-## 🎉 Success Indicators
-
-✅ **DNS queries** go through Swedish servers  
-✅ **Timezone** shows Europe/Stockholm  
-✅ **IP geolocation** shows Sweden  
-✅ **No DNS leaks** detected  
-✅ **WebRTC** doesn't reveal real IP  
-✅ **Connection speed** remains good  
+Verify with `docker exec bartolovpn-wireguard cat /etc/resolv.conf` and a DNS
+leak test site - remembering, as above, that this only affects DNS-based
+checks, not your real exit IP.
 
 ---
 
-**Remember**: Geo-spoofing is for privacy and access, not for circumventing legitimate restrictions. Always respect local laws and terms of service! 🌍
+**Remember**: this changes DNS resolution only. It is not an anonymity tool
+and does not hide your real location from anything that checks IP geolocation
+directly.

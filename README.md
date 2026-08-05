@@ -41,10 +41,8 @@ A comprehensive VPN server solution supporting **WireGuard**, **OpenVPN**, and *
 - **Multi-Region WireGuard** - Run real WireGuard servers in multiple countries and let peers pick which one to connect through, like a commercial VPN's country picker but backed by your own VPS. See [MULTI-REGION.md](MULTI-REGION.md).
 - **One-Click Oracle Cloud Provisioning** - Add a new region by clicking "Add via Oracle" in the dashboard - it creates the Always Free VM, installs Docker, and deploys the region agent for you, no SSH required. Health checks query Oracle's real instance state, not just an HTTP ping.
 - **Load Balancing** - HAProxy integration for high availability
-- **IP Rotation** - Dynamic IP address rotation to avoid detection
-- **Geo-spoofing** - Configure VPN to appear in different countries
-- **Cloudflare Tunnel** - Secure remote access without port forwarding
 - **Docker Networking** - Advanced container networking for scalability
+- *Optional, DIY add-ons (not configured out of the box - see [Advanced Features](#-advanced-features) below for what each one actually does and doesn't do): IP rotation, DNS-only geo-spoofing (Sweden only today), Cloudflare Tunnel*
 
 ## ⚖️ How It Compares
 
@@ -54,7 +52,7 @@ A comprehensive VPN server solution supporting **WireGuard**, **OpenVPN**, and *
 | Web UI | ✅ Full dashboard | ✅ Minimal | ✅ Minimal | ✅ Full dashboard |
 | Multi-user accounts | ✅ | ❌ | ❌ | ✅ |
 | QR code client setup | ✅ | ✅ | ✅ | ❌ |
-| Geo-spoofing / IP rotation | ✅ | ❌ | ❌ | ❌ |
+| Geo-spoofing / IP rotation | ⚠️ DNS-only, Sweden only, optional/DIY (see [Advanced Features](#-advanced-features)) | ❌ | ❌ | ❌ |
 | Multi-region country picker | ✅ (real exit IPs, one-click Oracle provisioning) | ❌ | ❌ | ✅ (mesh, not country-picker style) |
 | Load balancing (HAProxy) | ✅ | ❌ | ❌ | ❌ |
 | Zero-config mesh networking | ❌ | ❌ | ❌ | ✅ |
@@ -174,29 +172,39 @@ REGION_AGENT_ENCRYPTION_KEY=your-region-agent-encryption-key
 
 ## 🔧 Advanced Features
 
-### IP Rotation
-```bash
-# Manual rotation
-./scripts/docker-network-rotation.sh rotate
+The three features below are all **optional, DIY, and not configured on a fresh
+install** - none of them run unless you deploy them yourself, and each has
+real limitations worth understanding before you rely on it.
 
-# Continuous rotation (every hour)
-./scripts/docker-network-rotation.sh continuous
+### IP Rotation
+Rotates VPN containers' *internal* Docker bridge-network IPs and reloads
+HAProxy. This has no effect on your actual public exit IP - that address was
+never visible outside the Docker host to begin with, so this doesn't provide
+anonymity or help "avoid detection" despite the name. It's internal
+bookkeeping, not a privacy feature.
+```bash
+./scripts/docker-network-rotation.sh rotate       # once
+./scripts/docker-network-rotation.sh continuous   # every hour
 ```
 
 ### Geo-spoofing
+DNS-only, and Sweden-only today (the country isn't a script argument - "for
+other countries" isn't currently supported, that would need a code change).
+Changes which DNS resolvers your peers use; **does not** change your actual
+exit IP or what IP-based geolocation checks see. See [GEO-SPOOFING.md](GEO-SPOOFING.md)
+for what this can and can't actually do - if you want a real exit IP in
+another country, that's [multi-region](MULTI-REGION.md), not this.
 ```bash
-# Configure for Sweden
-./scripts/geo-spoofing.sh sweden
-
-# Configure for other countries
-./scripts/geo-spoofing.sh germany
-./scripts/geo-spoofing.sh japan
+./scripts/geo-spoofing.sh setup
 ```
 
 ### Cloudflare Tunnel Setup
+Not connected to anything by default - see [cloudflare-tunnel-setup.md](cloudflare-tunnel-setup.md)
+before running this, especially if you already run a `cloudflared` systemd
+service on this host for something else (the script won't overwrite an
+already-active one, but check first).
 ```bash
-# Setup secure remote access
-./scripts/setup-cloudflare-tunnel.sh
+./scripts/setup-cloudflare-tunnel.sh setup
 ```
 
 ### Backup & Restore
@@ -235,18 +243,17 @@ docker-compose logs ikev2
 
 - **JWT Authentication** - Secure API access
 - **Password Hashing** - bcrypt for user passwords
-- **SSL/TLS** - Encrypted communications (via Cloudflare Tunnel or your own reverse proxy)
+- **SSL/TLS** - Not on by default; the web interface serves plain HTTP out of the box. See [TLS-SETUP.md](TLS-SETUP.md) (your own domain + Let's Encrypt) or [cloudflare-tunnel-setup.md](cloudflare-tunnel-setup.md) (optional, DIY) to add it.
 - **Network Isolation** - Docker network segmentation
 - **Privileged Containers** - Minimal required permissions
-- **Cloudflare Tunnel** - Zero-trust remote access
 
 ## 📚 Documentation
 
 ### Setup Guides
 - **[Multi-Region Guide](MULTI-REGION.md)** - Run real WireGuard servers in multiple countries, including one-click Oracle Cloud provisioning
-- **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** - Secure remote access configuration
-- **[Local TLS Setup](TLS-SETUP.md)** - HTTPS via your own domain + Let's Encrypt, without Cloudflare
-- **[Geo-spoofing Guide](GEO-SPOOFING.md)** - Location spoofing configuration
+- **[Cloudflare Tunnel Setup](cloudflare-tunnel-setup.md)** (optional) - Secure remote access configuration
+- **[Local TLS Setup](TLS-SETUP.md)** (optional) - HTTPS via your own domain + Let's Encrypt, without Cloudflare
+- **[Geo-spoofing Guide](GEO-SPOOFING.md)** (optional, limited) - DNS-only, Sweden-only spoofing - read the caveats before relying on it
 
 ### Quick Reference
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes

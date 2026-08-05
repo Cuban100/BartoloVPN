@@ -1,5 +1,20 @@
 # 🌐 Cloudflare Tunnel Setup for BartoloVPN
 
+> ⚠️ **Optional and not configured by default.** BartoloVPN does not set this up
+> for you - `docker-compose.yml` has no `cloudflared` service, and nothing here
+> runs unless you deploy it yourself via `scripts/setup-cloudflare-tunnel.sh` or
+> by hand. If you're already exposing this box through an *existing* Cloudflare
+> Tunnel you manage separately (e.g. one shared across other services on the
+> same host, configured through the Cloudflare Zero Trust dashboard), you likely
+> don't need this guide at all - just add an ingress rule there pointing at
+> this server's `LOCAL_IP:API_PORT` (default `5000`) or at HAProxy's port 80.
+>
+> **If a `cloudflared` systemd service is already running on this host** (check
+> with `systemctl status cloudflared`), do *not* run this script's `service`
+> step - it would overwrite that unit and break whatever tunnel it's already
+> managing. `setup-cloudflare-tunnel.sh` now refuses to do this automatically,
+> but add your ingress rule to the existing tunnel's config by hand instead.
+
 Secure your VPN management interface using Cloudflare Tunnel instead of traditional port forwarding.
 
 ## 🎯 Why Cloudflare Tunnel?
@@ -42,6 +57,12 @@ cloudflared tunnel list
 ```
 
 ### 4. Configure Tunnel
+
+There's no separate "web UI" service - the dashboard and the API are the same
+FastAPI app (`vpn-api`, port 5000 by default, `API_PORT` in `.env`), so there's
+only one real ingress target for it. HAProxy's stats page (port 8404) is
+optional to expose.
+
 ```bash
 # Create tunnel configuration
 cat > ~/.cloudflared/config.yml << 'EOF'
@@ -49,20 +70,14 @@ tunnel: YOUR_TUNNEL_ID
 credentials-file: ~/.cloudflared/YOUR_TUNNEL_ID.json
 
 ingress:
-  # VPN Management Interface (FastAPI)
+  # BartoloVPN dashboard + API (same FastAPI app, vpn-api)
   - hostname: vpn.yourdomain.com
     service: http://192.168.1.100:5000
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
       readTimeout: 30s
-  
-  # Web UI (if separate)
-  - hostname: vpn-ui.yourdomain.com
-    service: http://192.168.1.100:8080
-    originRequest:
-      noTLSVerify: true
-  
+
   # HAProxy Stats (optional)
   - hostname: vpn-stats.yourdomain.com
     service: http://192.168.1.100:8404
@@ -78,7 +93,6 @@ EOF
 ```bash
 # Create DNS records for your tunnel
 cloudflared tunnel route dns bartolo-vpn vpn.yourdomain.com
-cloudflared tunnel route dns bartolo-vpn vpn-ui.yourdomain.com
 cloudflared tunnel route dns bartolo-vpn vpn-stats.yourdomain.com
 ```
 
@@ -93,63 +107,26 @@ nohup cloudflared tunnel --config ~/.cloudflared/config.yml run bartolo-vpn > /v
 
 ## 🔧 Docker Integration
 
-### 1. Create Cloudflare Tunnel Service
+Add this service directly to the repo's existing `docker-compose.yml` (there's
+no separate "updated" compose file to copy - just append this block). It
+doesn't need to join `vpn-network` or `vpn-external` - `vpn-api` isn't on
+either of those (it shares the `wireguard` container's network namespace), and
+the ingress config above already reaches services via the host's `LOCAL_IP`,
+not container-name DNS. `web-ui` isn't a real service - it's the same `vpn-api`
+container as above, already listed in `depends_on`.
+
 ```yaml
-# Add to docker-compose.yml
-services:
+# Append to docker-compose.yml's services: section
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: bartolo-cloudflared
-    restart: unless-stopped
-    command: tunnel --config /etc/cloudflared/config.yml run bartolo-vpn
-    volumes:
-      - ~/.cloudflared:/etc/cloudflared:ro
-    networks:
-      vpn-network:
-        ipv4_address: 172.20.0.20
-    depends_on:
-      - vpn-api
-      - web-ui
-      - haproxy
-```
-
-### 2. Updated Docker Compose
-```yaml
-version: '3.8'
-
-services:
-  # ... existing services ...
-  
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: bartolo-cloudflared
+    container_name: ${COMPOSE_PROJECT_NAME}-cloudflared
     restart: unless-stopped
     command: tunnel --config /etc/cloudflared/config.yml run bartolo-vpn
     volumes:
       - ./config/cloudflared:/etc/cloudflared:ro
-    networks:
-      vpn-network:
-        ipv4_address: 172.20.0.20
     depends_on:
-      - vpn-api
-      - web-ui
+      - wireguard
       - haproxy
-    labels:
-      - "traefik.enable=false"
-
-networks:
-  vpn-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
-          gateway: 172.20.0.1
-  vpn-external:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.13.13.0/24
-          gateway: 10.13.13.1
 ```
 
 ## 🔐 Security Configuration

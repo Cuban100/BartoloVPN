@@ -48,7 +48,7 @@ services:
   # WireGuard VPN Server
   wireguard:
     image: linuxserver/wireguard:latest
-    container_name: bartolo-wireguard
+    container_name: ${COMPOSE_PROJECT_NAME}-wireguard
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -79,7 +79,7 @@ services:
   # OpenVPN Server
   openvpn:
     image: kylemanna/openvpn:latest
-    container_name: bartolo-openvpn
+    container_name: ${COMPOSE_PROJECT_NAME}-openvpn
     privileged: true
     cap_add:
       - NET_ADMIN
@@ -107,7 +107,7 @@ services:
   # CoreDNS for OpenVPN clients only
   openvpn-dns:
     image: coredns/coredns:latest
-    container_name: bartolo-openvpn-dns
+    container_name: ${COMPOSE_PROJECT_NAME}-openvpn-dns
     volumes:
       - ./config/openvpn-dns/Corefile:/Corefile:ro
     command: -conf /Corefile
@@ -119,7 +119,7 @@ services:
   # IKEv2 VPN Server (using strongSwan)
   ikev2:
     image: hwdsl2/ipsec-vpn-server:latest
-    container_name: bartolo-ikev2
+    container_name: ${COMPOSE_PROJECT_NAME}-ikev2
     privileged: true
     environment:
       - VPN_IPSEC_PSK=${IKEV2_PSK:-your-ikev2-psk}
@@ -149,7 +149,7 @@ services:
   # are enabled - not a general docker socket passthrough.
   docker-log-proxy:
     image: tecnativa/docker-socket-proxy:latest
-    container_name: bartolo-docker-log-proxy
+    container_name: ${COMPOSE_PROJECT_NAME}-docker-log-proxy
     environment:
       - CONTAINERS=1
       - POST=1
@@ -184,7 +184,7 @@ services:
   # VPN Management API (this image)
   vpn-api:
     image: cuban100/bartolovpn:latest
-    container_name: bartolo-vpn-api
+    container_name: ${COMPOSE_PROJECT_NAME}-vpn-api
     cap_add:
       - NET_ADMIN
     env_file:
@@ -201,7 +201,7 @@ services:
   # Load Balancer
   haproxy:
     image: haproxy:alpine
-    container_name: bartolo-haproxy
+    container_name: ${COMPOSE_PROJECT_NAME}-haproxy
     ports:
       - "8082:80"
       - "8443:443"

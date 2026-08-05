@@ -1,6 +1,16 @@
 #!/bin/bash
 # Docker Network IP Rotation Script for BartoloVPN
-# This script rotates IP addresses in Docker networks to avoid detection
+#
+# Rotates VPN containers' *internal* Docker bridge-network IPs (the
+# 10.13.13.x-range addresses assigned inside vpn-external) and reloads
+# HAProxy with the new addresses. This has no effect on the VPN's actual
+# public exit IP as seen by connected clients or the wider internet - that's
+# determined by SERVER_IP / the host's real IP and each protocol's own
+# listener, neither of which this touches. Internal bridge IPs were never
+# visible outside the Docker host in the first place, so rotating them does
+# not provide anonymity or "avoid detection" in any external sense - this is
+# purely internal bookkeeping. For a genuinely different exit IP, see
+# MULTI-REGION.md instead.
 
 set -e
 
@@ -96,9 +106,9 @@ update_haproxy_config() {
     log_info "Updating HAProxy configuration..."
     
     # Get current container IPs
-    local wireguard_ip=$(docker inspect bartolo-wireguard --format '{{range .NetworkSettings.Networks.bartolovpn_vpn-external}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "10.13.13.1")
-    local openvpn_ip=$(docker inspect bartolo-openvpn --format '{{range .NetworkSettings.Networks.bartolovpn_vpn-external}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "10.13.13.2")
-    local ikev2_ip=$(docker inspect bartolo-ikev2 --format '{{range .NetworkSettings.Networks.bartolovpn_vpn-external}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "10.13.13.3")
+    local wireguard_ip=$(docker inspect bartolovpn-wireguard --format '{{range .NetworkSettings.Networks.bartolovpn_vpn-external}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "10.13.13.1")
+    local openvpn_ip=$(docker inspect bartolovpn-openvpn --format '{{range .NetworkSettings.Networks.bartolovpn_vpn-external}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "10.13.13.2")
+    local ikev2_ip=$(docker inspect bartolovpn-ikev2 --format '{{range .NetworkSettings.Networks.bartolovpn_vpn-external}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "10.13.13.3")
     
     # Update haproxy.cfg with new IPs
     sed -i "s/server wireguard1 .*:51820/server wireguard1 $wireguard_ip:51820/g" haproxy.cfg
@@ -107,8 +117,8 @@ update_haproxy_config() {
     sed -i "s/server ikev2_4500 .*:4500/server ikev2_4500 $ikev2_ip:4500/g" haproxy.cfg
     
     # Reload HAProxy
-    docker exec bartolo-haproxy haproxy -f /usr/local/etc/haproxy/haproxy.cfg -c >/dev/null 2>&1 && \
-    docker exec bartolo-haproxy kill -HUP 1 >/dev/null 2>&1 && \
+    docker exec bartolovpn-haproxy haproxy -f /usr/local/etc/haproxy/haproxy.cfg -c >/dev/null 2>&1 && \
+    docker exec bartolovpn-haproxy kill -HUP 1 >/dev/null 2>&1 && \
     log_info "HAProxy configuration reloaded successfully" || \
     log_warn "Could not reload HAProxy configuration"
 }
@@ -143,7 +153,7 @@ show_status() {
     docker network inspect "$NETWORK_NAME" --format '{{range .Containers}}{{.Name}}: {{.IPv4Address}}{{"\n"}}{{end}}' 2>/dev/null || echo "Network not found"
     
     echo -e "\nContainer IPs:"
-    for container in bartolo-wireguard bartolo-openvpn bartolo-ikev2 bartolo-haproxy; do
+    for container in bartolovpn-wireguard bartolovpn-openvpn bartolovpn-ikev2 bartolovpn-haproxy; do
         if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
             local ip=$(docker inspect "$container" --format '{{range .NetworkSettings.Networks.bartolovpn_vpn-external}}{{.IPAddress}}{{end}}' 2>/dev/null || echo "N/A")
             echo "$container: $ip"

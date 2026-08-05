@@ -15,7 +15,9 @@ browser and the server. Do one of the two before exposing this to the internet.
 ## Overview
 
 The stack already ships a `haproxy` service (`docker-compose.yml`) fronting the web
-UI on port 80/8081. This guide adds TLS termination to it using a free
+UI on container-internal port 80 (published on the host as `8082` by default -
+see the `haproxy` service's `ports:` in `docker-compose.yml`). This guide adds
+TLS termination to it using a free
 [Let's Encrypt](https://letsencrypt.org/) certificate, obtained with `certbot`.
 
 **Prerequisites:**
@@ -86,7 +88,7 @@ combined PEM, then reloads haproxy:
 
 ```bash
 # /etc/cron.d/bartolovpn-cert-renew
-0 3 * * * root certbot renew --quiet --deploy-hook "cat /etc/letsencrypt/live/vpn.yourdomain.com/fullchain.pem /etc/letsencrypt/live/vpn.yourdomain.com/privkey.pem > /etc/letsencrypt/haproxy/vpn.yourdomain.com.pem && docker kill -s HUP bartolo-haproxy"
+0 3 * * * root certbot renew --quiet --deploy-hook "cat /etc/letsencrypt/live/vpn.yourdomain.com/fullchain.pem /etc/letsencrypt/live/vpn.yourdomain.com/privkey.pem > /etc/letsencrypt/haproxy/vpn.yourdomain.com.pem && docker kill -s HUP ${COMPOSE_PROJECT_NAME:-bartolovpn}-haproxy"
 ```
 
 ## Notes

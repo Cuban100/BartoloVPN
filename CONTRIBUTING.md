@@ -128,7 +128,7 @@ python -m pytest tests/ --cov=. --cov-report=html
 - Report security issues privately
 
 ### Security Issues
-For security-related issues, please email: admin@bartolovpn.com
+For security-related issues, please email: pctechservices.llc@gmail.com
 
 ## 🚀 Release Process
 

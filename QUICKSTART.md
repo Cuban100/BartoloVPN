@@ -84,38 +84,28 @@ curl -X POST "http://your-server-ip:5000/users" \
   }'
 ```
 
-## 🔄 Docker Network IP Rotation
-
-BartoloVPN leverages Docker's advanced networking for automatic IP rotation and load balancing:
+## 🔄 Docker Networking (Optional IP Rotation Script)
 
 ### 1. Docker Network Architecture
-- **vpn-network** (172.20.0.0/16): Internal communication between services
-- **vpn-external** (10.13.13.0/24): VPN client traffic and IP rotation
-- **HAProxy**: Load balancer with health checks and automatic failover
+- **vpn-network** (`172.27.0.0/16`): Internal communication between services
+- **vpn-external** (`10.15.15.0/24`): where openvpn/ikev2/haproxy reach the wireguard container from
+- **HAProxy**: fronts the web dashboard/API on port 80/5000 (see `haproxy.cfg` - currently a single backend server each, not multiple/failover)
 
-### 2. Automatic IP Rotation
+Note: the VPN *peers themselves* (WireGuard clients) get addresses from a
+separate subnet entirely - `WIREGUARD_SUBNET` (`10.13.13.0/24` by default),
+not `vpn-external`.
+
+### 2. IP Rotation Script (optional, limited)
+`scripts/docker-network-rotation.sh` rotates VPN containers' *internal*
+Docker bridge-network IPs and reloads HAProxy. This has no effect on the
+VPN's actual public exit IP - that was never visible outside the Docker host
+in the first place, so this isn't a real anti-detection or anonymity
+measure, just internal bookkeeping. Not run automatically.
 ```bash
-# Manual rotation
-./scripts/docker-network-rotation.sh rotate
-
-# Continuous rotation (every hour)
-./scripts/docker-network-rotation.sh continuous
-
-# Check current status
-./scripts/docker-network-rotation.sh status
+./scripts/docker-network-rotation.sh rotate       # once
+./scripts/docker-network-rotation.sh continuous    # every hour
+./scripts/docker-network-rotation.sh status        # check current container IPs
 ```
-
-### 3. Load Balancing Features
-- **Round-robin** distribution across VPN servers
-- **Health checks** for automatic failover
-- **Backup servers** for high availability
-- **Real-time monitoring** via HAProxy stats
-
-### 4. Network Isolation
-- VPN traffic isolated in `vpn-external` network
-- Internal services in `vpn-network` network
-- Automatic IP assignment and rotation
-- No conflicts with host network
 
 ## 📊 Monitoring
 
@@ -191,8 +181,8 @@ sudo netstat -tulpn | grep :51820
 # Check if service is running
 docker-compose ps
 
-# Check web interface logs
-docker-compose logs web-ui
+# Check web interface logs (vpn-api serves both the API and the dashboard)
+docker-compose logs vpn-api
 ```
 
 ### Useful Commands
@@ -219,7 +209,7 @@ docker stats
 - 📖 **Documentation**: README.md
 - 🐛 **Issues**: GitHub Issues
 - 💬 **Community**: GitHub Discussions
-- 📧 **Email**: support@bartolovpn.com
+- 📧 **Email**: pctechservices.llc@gmail.com
 
 ## 🔄 Updates
 
