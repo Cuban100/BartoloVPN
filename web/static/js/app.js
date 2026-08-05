@@ -498,11 +498,13 @@ function updateVPNMetrics(vpnData) {
     // WireGuard metrics
     const wgData = vpnData.wireguard || {};
     const wgConnectionsEl = document.getElementById('wg-connections');
+    const wgPageConnectionsEl = document.getElementById('wireguard-connections');
     const wgBandwidthEl = document.getElementById('wg-bandwidth');
     const wgLatencyEl = document.getElementById('wg-latency');
     const wgTransferEl = document.getElementById('wg-transfer');
-    
+
     if (wgConnectionsEl) wgConnectionsEl.textContent = wgData.connections || 0;
+    if (wgPageConnectionsEl) wgPageConnectionsEl.textContent = wgData.connections || 0;
     if (wgBandwidthEl) wgBandwidthEl.textContent = formatSpeed(wgData.bandwidth || 0);
     if (wgLatencyEl) wgLatencyEl.textContent = `${wgData.latency || 0}ms`;
     if (wgTransferEl) wgTransferEl.textContent = `${(wgData.transfer || 0).toFixed(1)} MB`;
@@ -511,11 +513,13 @@ function updateVPNMetrics(vpnData) {
     // OpenVPN metrics
     const ovpnData = vpnData.openvpn || {};
     const ovpnConnectionsEl = document.getElementById('ovpn-connections');
+    const ovpnPageConnectionsEl = document.getElementById('openvpn-connections');
     const ovpnBandwidthEl = document.getElementById('ovpn-bandwidth');
     const ovpnLatencyEl = document.getElementById('ovpn-latency');
     const ovpnTransferEl = document.getElementById('ovpn-transfer');
-    
+
     if (ovpnConnectionsEl) ovpnConnectionsEl.textContent = ovpnData.connections || 0;
+    if (ovpnPageConnectionsEl) ovpnPageConnectionsEl.textContent = ovpnData.connections || 0;
     if (ovpnBandwidthEl) ovpnBandwidthEl.textContent = formatSpeed(ovpnData.bandwidth || 0);
     if (ovpnLatencyEl) ovpnLatencyEl.textContent = `${ovpnData.latency || 0}ms`;
     if (ovpnTransferEl) ovpnTransferEl.textContent = `${(ovpnData.transfer || 0).toFixed(1)} MB`;
@@ -832,16 +836,21 @@ function cleanupMonitoring() {
     stopMonitoringInterval();
 }
 
-// DNS Leak Check widget (WireGuard/OpenVPN tabs) - shares the same
-// refreshIntervalMs/autoRefreshEnabled state as Monitoring's own
-// auto-refresh, so it stays in sync with whatever the user set there even
-// though this runs from a different tab.
+// Per-protocol-tab auto-refresh (DNS Leak Check + the page's own Active
+// Connections stat card) - shares the same refreshIntervalMs/
+// autoRefreshEnabled state as Monitoring's own auto-refresh, so it stays in
+// sync with whatever the user set there even though this runs from a
+// different tab.
 let dnsLeakCheckInterval = null;
 
 function initializeDnsLeakCheck(protocol) {
-    loadDnsLeakCheck(protocol);
+    const tick = () => {
+        loadDnsLeakCheck(protocol);
+        loadSystemResources(); // keeps this page's own Active Connections card live too
+    };
+    tick();
     if (autoRefreshEnabled) {
-        dnsLeakCheckInterval = setInterval(() => loadDnsLeakCheck(protocol), refreshIntervalMs);
+        dnsLeakCheckInterval = setInterval(tick, refreshIntervalMs);
     }
 }
 
@@ -877,6 +886,8 @@ const DNS_LEAK_STATUS_CLASSES = {
 };
 
 function renderDnsLeakCheck(protocol, data) {
+    updateDnsLeakSummary(protocol, data);
+
     const container = document.getElementById(`${protocol}-dns-leak-list`);
     if (!container || !data) return;
 
@@ -902,6 +913,40 @@ function renderDnsLeakCheck(protocol, data) {
             <span class="status-badge ${DNS_LEAK_STATUS_CLASSES[item.status] || 'status-idle'}">${DNS_LEAK_STATUS_LABELS[item.status] || item.status}</span>
         </div>
     `).join('');
+}
+
+// The compact stat-card up top (next to Active Connections/Server Status) -
+// same data as the detailed list below, just condensed to one glance.
+function updateDnsLeakSummary(protocol, data) {
+    const valueEl = document.getElementById(`${protocol}-dns-leak-summary`);
+    const labelEl = document.getElementById(`${protocol}-dns-leak-summary-label`);
+    if (!valueEl || !labelEl) return;
+
+    if (!data || !data.available) {
+        valueEl.textContent = 'N/A';
+        valueEl.className = 'stat-value';
+        labelEl.textContent = data && data.reason ? data.reason : 'Not configured';
+        return;
+    }
+
+    const items = data.peers || data.clients || [];
+    if (items.length === 0) {
+        valueEl.textContent = '--';
+        valueEl.className = 'stat-value';
+        labelEl.textContent = 'No active peers';
+        return;
+    }
+
+    const issues = items.filter(i => i.status === 'leak_suspected' || i.status === 'config_mismatch').length;
+    if (issues > 0) {
+        valueEl.textContent = `${issues} Issue${issues !== 1 ? 's' : ''}`;
+        valueEl.className = 'stat-value status-warning';
+        labelEl.textContent = 'Possible DNS leak';
+    } else {
+        valueEl.textContent = 'Protected';
+        valueEl.className = 'stat-value status-healthy';
+        labelEl.textContent = `${items.length} peer${items.length !== 1 ? 's' : ''} checked`;
+    }
 }
 
 // Fetch current authenticated user details
@@ -983,7 +1028,7 @@ function switchTab(tabName) {
     } else if (tabName === 'ikev2') {
         loadIkev2Credentials();
         loadDashboardData();
-        loadDnsLeakCheck('ikev2'); // static "not available" state - no recurring interval needed
+        initializeDnsLeakCheck('ikev2'); // DNS leak portion stays static ("not available"); this also keeps Active Connections live
     } else if (tabName === 'regions') {
         loadRegionsAdminTable();
     } else if (tabName === 'settings') {
